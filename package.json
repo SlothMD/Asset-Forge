@@ -1,0 +1,22 @@
+{
+  "name": "asset-forge",
+  "private": true,
+  "version": "0.1.0",
+  "description": "Local-first tabletop asset pipeline for data-bound cards, tokens, counters, and printable exports.",
+  "type": "module",
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "scripts": {
+    "dev": "npm --workspace apps/desktop run dev",
+    "build": "npm --workspace apps/desktop run build",
+    "preview": "npm --workspace apps/desktop run preview",
+    "tauri:dev": "npm --workspace apps/desktop run tauri:dev",
+    "tauri:build": "npm --workspace apps/desktop run tauri:build",
+    "typecheck": "npm --workspace apps/desktop run typecheck"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}

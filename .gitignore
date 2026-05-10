@@ -1,0 +1,15 @@
+node_modules/
+.sixth/
+dist/
+dist-ssr/
+target/
+.turbo/
+.vite/
+*.log
+.env
+.env.*
+!.env.example
+*.local
+coverage/
+exports/
+builds/

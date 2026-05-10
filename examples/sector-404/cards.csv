@@ -1,0 +1,4 @@
+id,title,type,cost,rules_text,faction
+card_001,Patch the Hull,Action,2,Repair 2 hull damage,Freeholders
+card_002,Lock Target,Tactic,1,Gain target lock on one enemy ship,Freeholders
+card_003,Burn Hard,Action,3,Move one extra sector and gain 1 heat,PACS
