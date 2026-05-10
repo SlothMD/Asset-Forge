@@ -48,6 +48,14 @@ docs/
 
 ## Development
 
+Install Windows development dependencies from the repo root:
+
+```powershell
+.\install-dev-dependencies.cmd
+```
+
+The installer prefers `G:\` for Rust/Cargo, npm global packages, npm cache, NuGet packages, pip cache, and user temp files when that drive exists. Run PowerShell as Administrator if the Visual Studio Build Tools install requests elevation.
+
 Install dependencies from the repo root:
 
 ```powershell

@@ -3,6 +3,8 @@ node_modules/
 dist/
 dist-ssr/
 target/
+apps/desktop/src-tauri/gen/
+apps/desktop/src-tauri/.build-tmp/
 .turbo/
 .vite/
 *.log
