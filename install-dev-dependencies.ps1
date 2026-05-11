@@ -1,6 +1,6 @@
 [CmdletBinding()]
 param(
-    [string]$DevDrive = "G:",
+    [string]$DevDrive,
     [switch]$SkipNpmInstall,
     [switch]$SkipVerification
 )
@@ -26,6 +26,115 @@ function Write-Warn {
 function Test-Command {
     param([string]$Name)
     return [bool](Get-Command $Name -ErrorAction SilentlyContinue)
+}
+
+function Format-ByteSize {
+    param([Nullable[UInt64]]$Bytes)
+
+    if ($null -eq $Bytes) {
+        return "unknown"
+    }
+
+    $units = @("B", "KB", "MB", "GB", "TB", "PB")
+    $size = [double]$Bytes
+    $unitIndex = 0
+    while ($size -ge 1024 -and $unitIndex -lt ($units.Count - 1)) {
+        $size = $size / 1024
+        $unitIndex++
+    }
+
+    return "{0:N1} {1}" -f $size, $units[$unitIndex]
+}
+
+function Get-AvailableInstallDrives {
+    $logicalDisks = Get-CimInstance Win32_LogicalDisk |
+        Where-Object { $_.Size -and $_.DeviceID } |
+        Sort-Object DeviceID
+
+    foreach ($disk in $logicalDisks) {
+        [PSCustomObject]@{
+            Drive      = $disk.DeviceID
+            Root       = "$($disk.DeviceID)\"
+            Label      = $disk.VolumeName
+            FileSystem = $disk.FileSystem
+            Free       = [UInt64]$disk.FreeSpace
+            Capacity   = [UInt64]$disk.Size
+        }
+    }
+}
+
+function Show-AvailableInstallDrives {
+    param([object[]]$Drives)
+
+    Write-Step "Available install drives"
+    for ($i = 0; $i -lt $Drives.Count; $i++) {
+        $drive = $Drives[$i]
+        $label = if ($drive.Label) { $drive.Label } else { "No label" }
+        $free = Format-ByteSize $drive.Free
+        $capacity = Format-ByteSize $drive.Capacity
+        Write-Host ("[{0}] {1}  {2}  {3} free / {4} total  {5}" -f ($i + 1), $drive.Root, $label, $free, $capacity, $drive.FileSystem)
+    }
+}
+
+function Normalize-DriveRoot {
+    param([string]$Drive)
+
+    $trimmed = $Drive.Trim()
+    if ($trimmed -match "^[A-Za-z]$") {
+        return "$($trimmed.ToUpper()):\"
+    }
+    if ($trimmed -match "^[A-Za-z]:$") {
+        return "$($trimmed.ToUpper())\"
+    }
+    if ($trimmed -match "^[A-Za-z]:\\$") {
+        return $trimmed.ToUpper()
+    }
+
+    return $trimmed
+}
+
+function Select-DevDriveRoot {
+    param([string]$RequestedDrive)
+
+    $drives = @(Get-AvailableInstallDrives)
+    if ($drives.Count -eq 0) {
+        throw "No writable filesystem drives were detected."
+    }
+
+    Show-AvailableInstallDrives -Drives $drives
+
+    if ($RequestedDrive) {
+        $driveRoot = Normalize-DriveRoot -Drive $RequestedDrive
+        if (-not ($drives.Root -contains $driveRoot)) {
+            throw "Requested dev drive '$RequestedDrive' was not found in the available drive list."
+        }
+
+        Write-Ok "Using requested dev drive $driveRoot"
+        return $driveRoot
+    }
+
+    while ($true) {
+        $choice = Read-Host "Enter the number or drive letter to use for tools and caches"
+        if ([string]::IsNullOrWhiteSpace($choice)) {
+            Write-Warn "Please choose a drive."
+            continue
+        }
+
+        $index = 0
+        if ([int]::TryParse($choice, [ref]$index)) {
+            if ($index -ge 1 -and $index -le $drives.Count) {
+                return $drives[$index - 1].Root
+            }
+        }
+
+        $driveRoot = Normalize-DriveRoot -Drive $choice
+        $matchedDrive = $drives | Where-Object { $_.Root -eq $driveRoot } | Select-Object -First 1
+        if ($matchedDrive) {
+            return $matchedDrive.Root
+        }
+
+        Write-Warn "Invalid drive selection '$choice'."
+    }
 }
 
 function Assert-Winget {
@@ -86,10 +195,13 @@ function Set-UserPathEntries {
 
     $oldPath = [Environment]::GetEnvironmentVariable("Path", "User")
     $pathParts = ($oldPath -split ";") | Where-Object {
-        $_ -and $_ -notin @(
+        $_ -and
+        $_ -notin @(
             "$env:USERPROFILE\.cargo\bin",
             "$env:APPDATA\npm"
-        )
+        ) -and
+        $_ -notmatch "^[A-Za-z]:\\DevTools\\rust\\cargo\\bin$" -and
+        $_ -notmatch "^[A-Za-z]:\\DevTools\\npm-global$"
     }
     $newPath = (($Entries + $pathParts) | Select-Object -Unique) -join ";"
     [Environment]::SetEnvironmentVariable("Path", $newPath, "User")
@@ -149,6 +261,10 @@ function Configure-DevStorage {
     $npmCache = Join-Path $cacheRoot "npm-cache"
     $nugetPackages = Join-Path $cacheRoot "nuget-home\packages"
     $pipCache = Join-Path $cacheRoot "pip\Cache"
+
+    Write-Step "Configuring development tools and caches on $DriveRoot"
+    Write-Host "Tools:  $devRoot"
+    Write-Host "Caches: $cacheRoot"
 
     New-Item -ItemType Directory -Force `
         $cargoHome, $rustupHome, $npmPrefix, $npmCache, $nugetPackages, $pipCache, $tempRoot |
@@ -210,17 +326,23 @@ function Move-DirectoryContents {
 }
 
 function Refresh-DevPath {
+    param([string]$NpmPrefix)
+
     if ($env:CARGO_HOME) {
         Add-PathIfExists (Join-Path $env:CARGO_HOME "bin")
     }
     Add-PathIfExists "$env:USERPROFILE\.cargo\bin"
-    Add-PathIfExists "G:\DevTools\npm-global"
+    if ($NpmPrefix) {
+        Add-PathIfExists $NpmPrefix
+    }
     Add-PathIfExists "$env:ProgramFiles\nodejs"
     Add-PathIfExists "$env:ProgramFiles\Git\cmd"
 }
 
 function Ensure-RustStable {
-    Refresh-DevPath
+    param([string]$NpmPrefix)
+
+    Refresh-DevPath -NpmPrefix $NpmPrefix
 
     if (-not (Test-Command "rustup")) {
         Write-Warn "rustup is not yet visible in this PowerShell session. Open a new terminal after this script finishes if Rust commands are still unavailable."
@@ -264,11 +386,14 @@ Write-Host "- Node.js LTS and npm"
 Write-Host "- Rustup, Rust, and Cargo"
 Write-Host "- Microsoft Visual Studio 2022 Build Tools with C++ desktop workload"
 Write-Host "- Microsoft Edge WebView2 Runtime"
-Write-Host "- G-drive dev cache/tool paths when $DevDrive is available"
+Write-Host "- User-selected dev tool and cache paths"
 Write-Host ""
 
 Assert-Winget
-Configure-DevStorage -DriveRoot $DevDrive
+$devDriveRoot = Select-DevDriveRoot -RequestedDrive $DevDrive
+$devRoot = Join-Path $devDriveRoot "DevTools"
+$npmPrefix = Join-Path $devRoot "npm-global"
+Configure-DevStorage -DriveRoot $devDriveRoot
 
 Install-WingetPackage -Id "Git.Git" -Name "Git"
 Install-WingetPackage -Id "OpenJS.NodeJS.LTS" -Name "Node.js LTS"
@@ -281,11 +406,11 @@ $vsOverride = @(
 )
 Install-WingetPackage -Id "Microsoft.VisualStudio.2022.BuildTools" -Name "Visual Studio 2022 Build Tools" -OverrideArgs $vsOverride
 
-Refresh-DevPath
-Ensure-RustStable
+Refresh-DevPath -NpmPrefix $npmPrefix
+Ensure-RustStable -NpmPrefix $npmPrefix
 if ($env:CARGO_HOME) {
     Ensure-RustupProxies -CargoBin (Join-Path $env:CARGO_HOME "bin")
-    Refresh-DevPath
+    Refresh-DevPath -NpmPrefix $npmPrefix
 }
 
 if (-not $SkipNpmInstall) {

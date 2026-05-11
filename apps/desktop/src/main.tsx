@@ -7,6 +7,8 @@ type ProjectSummary = {
   projectId: string;
   name: string;
   path: string;
+  githubRepositoryUrl: string;
+  localFolder: string;
   createdAt: string;
   updatedAt: string;
 };
@@ -15,6 +17,7 @@ type ProjectFile = {
   schemaVersion: string;
   projectId: string;
   name: string;
+  githubRepositoryUrl: string;
   description: string;
   notes: string;
   createdAt: string;
@@ -30,6 +33,19 @@ type ProjectDetailsUpdate = {
   path: string;
   description: string;
   notes: string;
+};
+
+type ProjectLinksUpdate = {
+  path: string;
+  githubRepositoryUrl: string;
+  localFolder: string;
+};
+
+type SyncAction = "status" | "pull" | "push";
+
+type ProjectSyncResult = {
+  command: string;
+  output: string;
 };
 
 type ActiveTool = "steam-launch-prep" | null;
@@ -53,6 +69,8 @@ function createFallbackProject(name: string): OpenProject {
     projectId,
     name: cleanName,
     path: `browser-local://${projectId}`,
+    githubRepositoryUrl: "",
+    localFolder: "",
     createdAt: now,
     updatedAt: now
   };
@@ -60,6 +78,7 @@ function createFallbackProject(name: string): OpenProject {
     schemaVersion: "0.1.0",
     projectId,
     name: cleanName,
+    githubRepositoryUrl: "",
     description: "",
     notes: "",
     createdAt: now,
@@ -98,6 +117,7 @@ function readFallbackProjectFile(project: ProjectSummary): ProjectFile {
     schemaVersion: "0.1.0",
     projectId: project.projectId,
     name: project.name,
+    githubRepositoryUrl: project.githubRepositoryUrl ?? "",
     description: "",
     notes: "",
     createdAt: project.createdAt,
@@ -159,6 +179,7 @@ const projectApi = {
     const updatedProject: ProjectSummary = { ...project, updatedAt };
     const updatedJson: ProjectFile = {
       ...projectJson,
+      githubRepositoryUrl: project.githubRepositoryUrl ?? projectJson.githubRepositoryUrl ?? "",
       description: update.description,
       notes: update.notes,
       updatedAt
@@ -174,6 +195,56 @@ const projectApi = {
     );
 
     return { project: updatedProject, projectJson: updatedJson };
+  },
+
+  async updateProjectLinks(update: ProjectLinksUpdate): Promise<OpenProject> {
+    if (isTauriRuntime()) {
+      return invoke<OpenProject>("update_project_links", { update });
+    }
+
+    const projects = readFallbackProjects();
+    const project = projects.find((candidate) => candidate.path === update.path);
+    if (!project) {
+      throw new Error("Project not found.");
+    }
+
+    const updatedAt = new Date().toISOString();
+    const projectJson = readFallbackProjectFile(project);
+    const updatedProject: ProjectSummary = {
+      ...project,
+      githubRepositoryUrl: update.githubRepositoryUrl,
+      localFolder: update.localFolder,
+      updatedAt
+    };
+    const updatedJson: ProjectFile = {
+      ...projectJson,
+      githubRepositoryUrl: update.githubRepositoryUrl,
+      updatedAt
+    };
+
+    writeFallbackProjectFile(updatedJson);
+    writeFallbackProjects(
+      projects
+        .map((candidate) =>
+          candidate.projectId === updatedProject.projectId ? updatedProject : candidate
+        )
+        .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))
+    );
+
+    return { project: updatedProject, projectJson: updatedJson };
+  },
+
+  async syncExternalProject(path: string, action: SyncAction): Promise<ProjectSyncResult> {
+    if (isTauriRuntime()) {
+      return invoke<ProjectSyncResult>("sync_external_project", {
+        request: { path, action }
+      });
+    }
+
+    return {
+      command: `git ${action}`,
+      output: "Git sync is available in the desktop runtime."
+    };
   }
 };
 
@@ -200,6 +271,9 @@ function App() {
   const [projectName, setProjectName] = useState("");
   const [description, setDescription] = useState("");
   const [notes, setNotes] = useState("");
+  const [githubRepositoryUrl, setGithubRepositoryUrl] = useState("");
+  const [localFolder, setLocalFolder] = useState("");
+  const [syncOutput, setSyncOutput] = useState<ProjectSyncResult | null>(null);
 
   const storageMode = useMemo(
     () => (isTauriRuntime() ? "Local project folders" : "Browser preview storage"),
@@ -224,6 +298,9 @@ function App() {
       setIsEditing(false);
       setDescription(opened.projectJson.description ?? "");
       setNotes(opened.projectJson.notes ?? "");
+      setGithubRepositoryUrl(opened.projectJson.githubRepositoryUrl ?? "");
+      setLocalFolder(opened.project.localFolder ?? "");
+      setSyncOutput(null);
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : String(caught));
     } finally {
@@ -263,6 +340,9 @@ function App() {
       setActiveTool(null);
       setDescription("");
       setNotes("");
+      setGithubRepositoryUrl("");
+      setLocalFolder("");
+      setSyncOutput(null);
       await refreshProjects();
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : String(caught));
@@ -286,6 +366,52 @@ function App() {
       });
       setActiveProject(opened);
       setIsEditing(false);
+      await refreshProjects();
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : String(caught));
+    } finally {
+      setIsBusy(false);
+    }
+  }
+
+  async function handleSaveLinks(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!activeProject) return;
+
+    setIsBusy(true);
+    setError(null);
+
+    try {
+      const opened = await projectApi.updateProjectLinks({
+        path: activeProject.project.path,
+        githubRepositoryUrl,
+        localFolder
+      });
+      setActiveProject(opened);
+      setGithubRepositoryUrl(opened.projectJson.githubRepositoryUrl ?? "");
+      setLocalFolder(opened.project.localFolder ?? "");
+      await refreshProjects();
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : String(caught));
+    } finally {
+      setIsBusy(false);
+    }
+  }
+
+  async function handleSyncExternalProject(action: SyncAction) {
+    if (!activeProject) return;
+
+    setIsBusy(true);
+    setError(null);
+    setSyncOutput(null);
+
+    try {
+      const result = await projectApi.syncExternalProject(activeProject.project.path, action);
+      setSyncOutput(result);
+      if (action === "pull") {
+        const opened = await projectApi.openProject(activeProject.project);
+        setActiveProject(opened);
+      }
       await refreshProjects();
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : String(caught));
@@ -347,7 +473,7 @@ function App() {
           <>
             <header className="project-header">
               <div>
-                <p className="eyebrow">Open Project</p>
+                <p className="eyebrow">Launcher</p>
                 <h2>{activeProject.project.name}</h2>
                 <p className="path-line">{activeProject.project.path}</p>
               </div>
@@ -421,6 +547,77 @@ function App() {
                 )}
               </section>
 
+              <section className="detail-card launcher-card">
+                <div className="section-heading">
+                  <h3>External Project</h3>
+                  <span>machine local</span>
+                </div>
+
+                <form className="link-form" onSubmit={(event) => void handleSaveLinks(event)}>
+                  <label>
+                    GitHub repository
+                    <input
+                      value={githubRepositoryUrl}
+                      placeholder="https://github.com/owner/repository"
+                      onChange={(event) => setGithubRepositoryUrl(event.target.value)}
+                    />
+                  </label>
+                  <label>
+                    Local folder on this machine
+                    <input
+                      value={localFolder}
+                      placeholder="C:\Projects\ExternalGame"
+                      onChange={(event) => setLocalFolder(event.target.value)}
+                    />
+                  </label>
+                  <div className="button-row">
+                    <button type="submit" className="primary" disabled={isBusy}>
+                      Save Links
+                    </button>
+                    <button
+                      type="button"
+                      disabled={isBusy || !localFolder}
+                      onClick={() => void handleSyncExternalProject("status")}
+                    >
+                      Git Status
+                    </button>
+                    <button
+                      type="button"
+                      disabled={isBusy || !localFolder}
+                      onClick={() => void handleSyncExternalProject("pull")}
+                    >
+                      Pull
+                    </button>
+                    <button
+                      type="button"
+                      disabled={isBusy || !localFolder}
+                      onClick={() => void handleSyncExternalProject("push")}
+                    >
+                      Push
+                    </button>
+                  </div>
+                </form>
+
+                <div className="readout-grid compact">
+                  <div>
+                    <dt>Portable hook</dt>
+                    <dd>{activeProject.projectJson.githubRepositoryUrl || "No GitHub repository set."}</dd>
+                  </div>
+                  <div>
+                    <dt>This machine</dt>
+                    <dd>{activeProject.project.localFolder || "No local folder bound on this machine."}</dd>
+                  </div>
+                </div>
+
+                {syncOutput ? (
+                  <pre className="sync-output">
+                    <strong>{syncOutput.command}</strong>
+                    {"\n"}
+                    {syncOutput.output}
+                  </pre>
+                ) : null}
+              </section>
+
               <section className="detail-card tool-card">
                 {activeTool === "steam-launch-prep" ? (
                   <SteamLaunchPrep project={activeProject.project} />
@@ -435,6 +632,7 @@ function App() {
           </>
         ) : (
           <div className="no-project">
+            <p className="eyebrow">Launcher</p>
             <h2>No Project Open</h2>
             <p>Create a project with + or select an existing project from the left rail.</p>
           </div>

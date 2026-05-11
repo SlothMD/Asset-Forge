@@ -243,9 +243,14 @@ h3 {
 
 .readout-grid,
 .edit-form,
-.prep-grid {
+.prep-grid,
+.link-form {
   display: grid;
   gap: 12px;
+}
+
+.compact {
+  margin-top: 12px;
 }
 
 .readout-grid div {
@@ -290,6 +295,33 @@ dd {
 
 .steam-tool {
   display: grid;
+}
+
+.tool-card {
+  grid-column: 1 / -1;
+}
+
+.button-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.sync-output {
+  background: #18211f;
+  border-radius: 8px;
+  color: #f8f3e9;
+  font-size: 0.78rem;
+  line-height: 1.45;
+  margin: 12px 0 0;
+  max-height: 220px;
+  overflow: auto;
+  padding: 12px;
+  white-space: pre-wrap;
+}
+
+.sync-output strong {
+  color: #b7d6cd;
 }
 
 .error-banner {

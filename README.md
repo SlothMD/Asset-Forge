@@ -54,7 +54,7 @@ Install Windows development dependencies from the repo root:
 .\install-dev-dependencies.cmd
 ```
 
-The installer prefers `G:\` for Rust/Cargo, npm global packages, npm cache, NuGet packages, pip cache, and user temp files when that drive exists. Run PowerShell as Administrator if the Visual Studio Build Tools install requests elevation.
+The installer lists available drives with free and total capacity, then prompts for the drive to use for Rust/Cargo, npm global packages, npm cache, NuGet packages, pip cache, and user temp files. Run PowerShell as Administrator if the Visual Studio Build Tools install requests elevation.
 
 Install dependencies from the repo root:
 
@@ -68,11 +68,16 @@ Run the desktop frontend in browser mode:
 npm run dev
 ```
 
-Run the Tauri app after Rust/Cargo and Tauri prerequisites are installed:
+Build and launch the Tauri app after Rust/Cargo and Tauri prerequisites are installed:
 
 ```powershell
-npm run tauri:dev
+.\launch-asset-forge.cmd
 ```
+
+Use `.\launch-asset-forge.cmd -BrowserOnly` to run the browser preview without the Tauri shell.
+Use `.\launch-asset-forge.cmd -Dev` to run the faster Tauri dev shell.
+
+Project metadata can store a portable GitHub repository URL. The local external project folder is stored per machine by the desktop app, so the same Asset Forge project can bind to different local clone paths on different computers before running Git status, pull, or push.
 
 ## Current Status
 
