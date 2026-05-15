@@ -2,6 +2,7 @@ use serde::{Deserialize, Serialize};
 use std::{
     collections::HashMap,
     fs,
+    io::BufWriter,
     path::{Path, PathBuf},
     process::Command,
     time::{SystemTime, UNIX_EPOCH},
@@ -83,11 +84,369 @@ struct ProjectSyncResult {
     output: String,
 }
 
+#[derive(Debug, Deserialize, Serialize, Clone)]
+#[serde(rename_all = "camelCase")]
+struct ShipModelTransform {
+    #[serde(default)]
+    yaw_degrees: f32,
+    #[serde(default)]
+    pitch_degrees: f32,
+    #[serde(default)]
+    roll_degrees: f32,
+    #[serde(default = "default_transform_scale")]
+    scale: f32,
+}
+
+impl Default for ShipModelTransform {
+    fn default() -> Self {
+        Self {
+            yaw_degrees: 0.0,
+            pitch_degrees: 0.0,
+            roll_degrees: 0.0,
+            scale: default_transform_scale(),
+        }
+    }
+}
+
+#[derive(Debug, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct ShipModelOrientationManifest {
+    schema_version: String,
+    updated_at: String,
+    models: HashMap<String, ShipModelTransform>,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct ShipModelOrientationEntry {
+    model_path: String,
+    file_name: String,
+    absolute_path: String,
+    transform: ShipModelTransform,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct ShipModelOrientationCatalog {
+    manifest_path: String,
+    models: Vec<ShipModelOrientationEntry>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct ShipModelOrientationUpdate {
+    project_path: String,
+    model_path: String,
+    transform: ShipModelTransform,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct ShipModelPreviewRequest {
+    project_path: String,
+    model_path: String,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct ImageScanRequest {
+    project_path: String,
+    source_folder: String,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct ImageAssetEntry {
+    absolute_path: String,
+    relative_path: String,
+    file_name: String,
+    extension: String,
+    inferred_type: String,
+    width: u32,
+    height: u32,
+    file_size_bytes: u64,
+    opportunities: Vec<String>,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct ImageScanResult {
+    source_folder: String,
+    assets: Vec<ImageAssetEntry>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct ImageOptimizeRequest {
+    project_path: String,
+    source_folder: String,
+    staging_folder: String,
+    target_max_dimension: u32,
+    output_format: String,
+    jpeg_quality: u8,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct ImageOptimizeEntry {
+    source_path: String,
+    output_path: String,
+    source_size_bytes: u64,
+    output_size_bytes: u64,
+    source_width: u32,
+    source_height: u32,
+    output_width: u32,
+    output_height: u32,
+    action: String,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct ImageOptimizeResult {
+    staging_folder: String,
+    outputs: Vec<ImageOptimizeEntry>,
+}
+
+fn default_transform_scale() -> f32 {
+    1.0
+}
+
 fn now_millis() -> u128 {
     SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .map(|duration| duration.as_millis())
         .unwrap_or(0)
+}
+
+fn local_folder_for_project(project_path: &Path) -> Result<PathBuf, String> {
+    let project = read_project(project_path)?;
+    let machine_links = read_machine_links()?;
+    let local_folder = machine_links
+        .get(&project.project_id)
+        .filter(|value| !value.trim().is_empty())
+        .ok_or_else(|| "Set a local folder for this machine first.".to_string())?;
+    let local_folder_path = PathBuf::from(local_folder);
+    if !local_folder_path.exists() {
+        return Err(format!(
+            "Local folder does not exist on this machine: {}",
+            local_folder_path.display()
+        ));
+    }
+
+    Ok(local_folder_path)
+}
+
+fn ship_model_manifest_path(local_folder: &Path) -> PathBuf {
+    local_folder
+        .join("content")
+        .join("assets")
+        .join("ship-model-orientation.manifest.json")
+}
+
+fn read_ship_model_manifest(path: &Path) -> Result<ShipModelOrientationManifest, String> {
+    if !path.exists() {
+        return Ok(ShipModelOrientationManifest {
+            schema_version: SCHEMA_VERSION.to_string(),
+            updated_at: now_isoish(),
+            models: HashMap::new(),
+        });
+    }
+
+    let contents = fs::read_to_string(path)
+        .map_err(|error| format!("Could not read {}: {error}", path.display()))?;
+    serde_json::from_str(&contents)
+        .map_err(|error| format!("Could not parse {}: {error}", path.display()))
+}
+
+fn write_ship_model_manifest(
+    path: &Path,
+    manifest: &ShipModelOrientationManifest,
+) -> Result<(), String> {
+    if let Some(parent) = path.parent() {
+        fs::create_dir_all(parent)
+            .map_err(|error| format!("Could not create {}: {error}", parent.display()))?;
+    }
+
+    let serialized = serde_json::to_string_pretty(manifest)
+        .map_err(|error| format!("Could not serialize ship model orientation manifest: {error}"))?;
+    fs::write(path, format!("{serialized}\n"))
+        .map_err(|error| format!("Could not write {}: {error}", path.display()))
+}
+
+fn collect_glb_files(root: &Path, files: &mut Vec<PathBuf>) -> Result<(), String> {
+    if !root.exists() {
+        return Ok(());
+    }
+
+    for entry in fs::read_dir(root)
+        .map_err(|error| format!("Could not read model directory {}: {error}", root.display()))?
+    {
+        let entry = entry.map_err(|error| format!("Could not read model directory entry: {error}"))?;
+        let path = entry.path();
+        if path.is_dir() {
+            collect_glb_files(&path, files)?;
+        } else if path
+            .extension()
+            .and_then(|extension| extension.to_str())
+            .is_some_and(|extension| extension.eq_ignore_ascii_case("glb"))
+        {
+            files.push(path);
+        }
+    }
+
+    Ok(())
+}
+
+fn collect_image_files(root: &Path, files: &mut Vec<PathBuf>) -> Result<(), String> {
+    if !root.exists() {
+        return Ok(());
+    }
+
+    for entry in fs::read_dir(root)
+        .map_err(|error| format!("Could not read {}: {error}", root.display()))?
+    {
+        let entry =
+            entry.map_err(|error| format!("Could not read entry in {}: {error}", root.display()))?;
+        let path = entry.path();
+        if path.is_dir() {
+            collect_image_files(&path, files)?;
+        } else if is_supported_image_file(&path) {
+            files.push(path);
+        }
+    }
+
+    Ok(())
+}
+
+fn is_supported_image_file(path: &Path) -> bool {
+    path.extension()
+        .and_then(|extension| extension.to_str())
+        .map(|extension| {
+            matches!(
+                extension.to_ascii_lowercase().as_str(),
+                "png" | "jpg" | "jpeg"
+            )
+        })
+        .unwrap_or(false)
+}
+
+fn resolve_project_folder(project_path: &str, folder: &str) -> Result<PathBuf, String> {
+    let path = PathBuf::from(folder.trim());
+    if path.is_absolute() {
+        return Ok(path);
+    }
+
+    Ok(local_folder_for_project(&PathBuf::from(project_path))?.join(path))
+}
+
+fn relative_path_string(root: &Path, path: &Path) -> String {
+    path.strip_prefix(root)
+        .unwrap_or(path)
+        .to_string_lossy()
+        .replace('\\', "/")
+}
+
+fn infer_image_type(path: &Path) -> String {
+    let name = path
+        .file_name()
+        .map(|name| name.to_string_lossy().to_ascii_lowercase())
+        .unwrap_or_default();
+    if name.contains("normal") || name.contains("_n.") || name.contains("-n.") {
+        "normal".to_string()
+    } else if name.contains("rough") {
+        "roughness".to_string()
+    } else if name.contains("metal") {
+        "metallic".to_string()
+    } else if name.contains("ao") || name.contains("ambient") || name.contains("occlusion") {
+        "ambient-occlusion".to_string()
+    } else if name.contains("height") || name.contains("displace") {
+        "height".to_string()
+    } else if name.contains("albedo")
+        || name.contains("base_color")
+        || name.contains("basecolor")
+        || name.contains("color")
+    {
+        "albedo".to_string()
+    } else if name.contains("icon") || name.contains("ui") {
+        "ui-icon".to_string()
+    } else if name.contains("screenshot") || name.contains("capsule") || name.contains("preview") {
+        "marketing".to_string()
+    } else {
+        "unknown".to_string()
+    }
+}
+
+fn image_opportunities(
+    path: &Path,
+    image_type: &str,
+    width: u32,
+    height: u32,
+    size: u64,
+) -> Vec<String> {
+    let mut opportunities = Vec::new();
+    let extension = path
+        .extension()
+        .and_then(|extension| extension.to_str())
+        .unwrap_or("")
+        .to_ascii_lowercase();
+
+    if width.max(height) > 2048 {
+        opportunities.push("downscale-to-2k-runtime".to_string());
+    }
+    if !width.is_power_of_two() || !height.is_power_of_two() {
+        opportunities.push("non-power-of-two-dimensions".to_string());
+    }
+    if extension == "png" && size > 2_500_000 && image_type != "normal" && image_type != "ui-icon"
+    {
+        opportunities.push("png-large-consider-jpeg".to_string());
+    }
+    if image_type == "unknown" {
+        opportunities.push("type-needs-review".to_string());
+    }
+
+    opportunities
+}
+
+fn res_path_for_model(local_folder: &Path, model_path: &Path) -> String {
+    let relative = model_path.strip_prefix(local_folder).unwrap_or(model_path);
+    format!(
+        "res://{}",
+        relative
+            .to_string_lossy()
+            .replace('\\', "/")
+            .trim_start_matches('/')
+    )
+}
+
+fn model_path_from_res_path(local_folder: &Path, model_path: &str) -> Result<PathBuf, String> {
+    let relative = model_path
+        .strip_prefix("res://")
+        .ok_or_else(|| format!("Unsupported model path: {}", model_path))?;
+    let candidate = local_folder.join(relative.replace('/', std::path::MAIN_SEPARATOR_STR));
+    let model_root = local_folder.join("assets").join("models").join("ships");
+    let canonical_model_root = model_root.canonicalize().map_err(|error| {
+        format!(
+            "Unable to resolve model folder {}: {}",
+            model_root.display(),
+            error
+        )
+    })?;
+    let canonical_candidate = candidate.canonicalize().map_err(|error| {
+        format!(
+            "Unable to resolve model path {}: {}",
+            candidate.display(),
+            error
+        )
+    })?;
+
+    if !canonical_candidate.starts_with(&canonical_model_root) {
+        return Err(format!(
+            "Model path is outside the ship model folder: {}",
+            model_path
+        ));
+    }
+
+    Ok(canonical_candidate)
 }
 
 fn now_isoish() -> String {
@@ -445,6 +804,217 @@ fn sync_external_project(request: ProjectSyncRequest) -> Result<ProjectSyncResul
     }
 }
 
+#[tauri::command]
+fn list_ship_model_orientations(project_path: String) -> Result<ShipModelOrientationCatalog, String> {
+    let project_path = PathBuf::from(project_path);
+    let local_folder = local_folder_for_project(&project_path)?;
+    let manifest_path = ship_model_manifest_path(&local_folder);
+    let manifest = read_ship_model_manifest(&manifest_path)?;
+    let mut files = Vec::new();
+    collect_glb_files(&local_folder.join("assets").join("models").join("ships"), &mut files)?;
+    files.sort();
+
+    let models = files
+        .into_iter()
+        .map(|path| {
+            let model_path = res_path_for_model(&local_folder, &path);
+            let transform = manifest
+                .models
+                .get(&model_path)
+                .cloned()
+                .unwrap_or_default();
+            ShipModelOrientationEntry {
+                file_name: path
+                    .file_name()
+                    .map(|name| name.to_string_lossy().to_string())
+                    .unwrap_or_else(|| model_path.clone()),
+                model_path,
+                absolute_path: path.to_string_lossy().to_string(),
+                transform,
+            }
+        })
+        .collect();
+
+    Ok(ShipModelOrientationCatalog {
+        manifest_path: manifest_path.to_string_lossy().to_string(),
+        models,
+    })
+}
+
+#[tauri::command]
+fn save_ship_model_orientation(
+    update: ShipModelOrientationUpdate,
+) -> Result<ShipModelOrientationCatalog, String> {
+    let project_path = PathBuf::from(&update.project_path);
+    let local_folder = local_folder_for_project(&project_path)?;
+    let manifest_path = ship_model_manifest_path(&local_folder);
+    let mut manifest = read_ship_model_manifest(&manifest_path)?;
+    manifest.updated_at = now_isoish();
+    manifest
+        .models
+        .insert(update.model_path, update.transform);
+    write_ship_model_manifest(&manifest_path, &manifest)?;
+    list_ship_model_orientations(update.project_path)
+}
+
+#[tauri::command]
+fn load_ship_model_preview(request: ShipModelPreviewRequest) -> Result<Vec<u8>, String> {
+    let project_path = PathBuf::from(request.project_path);
+    let local_folder = local_folder_for_project(&project_path)?;
+    let model_path = model_path_from_res_path(&local_folder, &request.model_path)?;
+    fs::read(&model_path).map_err(|error| {
+        format!(
+            "Unable to read model preview {}: {}",
+            model_path.display(),
+            error
+        )
+    })
+}
+
+#[tauri::command]
+fn scan_image_assets(request: ImageScanRequest) -> Result<ImageScanResult, String> {
+    let source_folder = resolve_project_folder(&request.project_path, &request.source_folder)?;
+    if !source_folder.exists() {
+        return Err(format!(
+            "Image source folder does not exist: {}",
+            source_folder.display()
+        ));
+    }
+
+    let mut files = Vec::new();
+    collect_image_files(&source_folder, &mut files)?;
+    files.sort();
+
+    let mut assets = Vec::new();
+    for path in files {
+        let metadata = fs::metadata(&path)
+            .map_err(|error| format!("Could not read metadata for {}: {error}", path.display()))?;
+        let (width, height) = image::image_dimensions(&path)
+            .map_err(|error| format!("Could not read image {}: {error}", path.display()))?;
+        let inferred_type = infer_image_type(&path);
+        let opportunities =
+            image_opportunities(&path, &inferred_type, width, height, metadata.len());
+        assets.push(ImageAssetEntry {
+            absolute_path: path.to_string_lossy().to_string(),
+            relative_path: relative_path_string(&source_folder, &path),
+            file_name: path
+                .file_name()
+                .map(|name| name.to_string_lossy().to_string())
+                .unwrap_or_default(),
+            extension: path
+                .extension()
+                .map(|extension| extension.to_string_lossy().to_ascii_lowercase())
+                .unwrap_or_default(),
+            inferred_type,
+            width,
+            height,
+            file_size_bytes: metadata.len(),
+            opportunities,
+        });
+    }
+
+    Ok(ImageScanResult {
+        source_folder: source_folder.to_string_lossy().to_string(),
+        assets,
+    })
+}
+
+#[tauri::command]
+fn optimize_image_assets(request: ImageOptimizeRequest) -> Result<ImageOptimizeResult, String> {
+    let source_folder = resolve_project_folder(&request.project_path, &request.source_folder)?;
+    let staging_folder = resolve_project_folder(&request.project_path, &request.staging_folder)?;
+    let target_max = request.target_max_dimension.clamp(256, 8192);
+    let output_format = request.output_format.trim().to_ascii_lowercase();
+    let jpeg_quality = request.jpeg_quality.clamp(35, 100);
+    if !matches!(output_format.as_str(), "jpg" | "jpeg" | "png") {
+        return Err("Output format must be png or jpg.".to_string());
+    }
+
+    let mut files = Vec::new();
+    collect_image_files(&source_folder, &mut files)?;
+    files.sort();
+    fs::create_dir_all(&staging_folder).map_err(|error| {
+        format!(
+            "Could not create staging folder {}: {error}",
+            staging_folder.display()
+        )
+    })?;
+
+    let mut outputs = Vec::new();
+    for path in files {
+        let relative = path.strip_prefix(&source_folder).unwrap_or(&path);
+        let mut output_path = staging_folder.join(relative);
+        output_path.set_extension(if output_format == "jpeg" { "jpg" } else { &output_format });
+        if let Some(parent) = output_path.parent() {
+            fs::create_dir_all(parent).map_err(|error| {
+                format!("Could not create output folder {}: {error}", parent.display())
+            })?;
+        }
+
+        let source_metadata = fs::metadata(&path)
+            .map_err(|error| format!("Could not read metadata for {}: {error}", path.display()))?;
+        let image = image::ImageReader::open(&path)
+            .map_err(|error| format!("Could not open image {}: {error}", path.display()))?
+            .decode()
+            .map_err(|error| format!("Could not decode image {}: {error}", path.display()))?;
+        let source_width = image.width();
+        let source_height = image.height();
+        let max_dimension = source_width.max(source_height);
+        let optimized = if max_dimension > target_max {
+            let ratio = target_max as f32 / max_dimension as f32;
+            let width = ((source_width as f32 * ratio).round() as u32).max(1);
+            let height = ((source_height as f32 * ratio).round() as u32).max(1);
+            image.resize(width, height, image::imageops::FilterType::Lanczos3)
+        } else {
+            image
+        };
+
+        if output_format == "png" {
+            optimized
+                .save_with_format(&output_path, image::ImageFormat::Png)
+                .map_err(|error| format!("Could not write {}: {error}", output_path.display()))?;
+        } else {
+            let output = fs::File::create(&output_path)
+                .map_err(|error| format!("Could not create {}: {error}", output_path.display()))?;
+            let mut writer = BufWriter::new(output);
+            let rgb = optimized.to_rgb8();
+            let mut encoder =
+                image::codecs::jpeg::JpegEncoder::new_with_quality(&mut writer, jpeg_quality);
+            encoder
+                .encode_image(&rgb)
+                .map_err(|error| format!("Could not write {}: {error}", output_path.display()))?;
+        }
+
+        let output_metadata = fs::metadata(&output_path)
+            .map_err(|error| format!("Could not read {}: {error}", output_path.display()))?;
+        outputs.push(ImageOptimizeEntry {
+            source_path: path.to_string_lossy().to_string(),
+            output_path: output_path.to_string_lossy().to_string(),
+            source_size_bytes: source_metadata.len(),
+            output_size_bytes: output_metadata.len(),
+            source_width,
+            source_height,
+            output_width: optimized.width(),
+            output_height: optimized.height(),
+            action: if max_dimension > target_max {
+                format!("resized-to-{}", target_max)
+            } else {
+                "reencoded-copy".to_string()
+            },
+        });
+    }
+
+    Ok(ImageOptimizeResult {
+        staging_folder: staging_folder.to_string_lossy().to_string(),
+        outputs,
+    })
+}
+
+#[tauri::command]
+fn close_app(app: tauri::AppHandle) {
+    app.exit(0);
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
@@ -455,7 +1025,13 @@ pub fn run() {
             open_project,
             update_project_details,
             update_project_links,
-            sync_external_project
+            sync_external_project,
+            list_ship_model_orientations,
+            save_ship_model_orientation,
+            load_ship_model_preview,
+            scan_image_assets,
+            optimize_image_assets,
+            close_app
         ])
         .run(tauri::generate_context!())
         .expect("error while running Asset Forge");

@@ -68,16 +68,18 @@ Run the desktop frontend in browser mode:
 npm run dev
 ```
 
-Build and launch the Tauri app after Rust/Cargo and Tauri prerequisites are installed:
+Launch the Tauri app after Rust/Cargo and Tauri prerequisites are installed:
 
 ```powershell
 .\launch-asset-forge.cmd
 ```
 
 Use `.\launch-asset-forge.cmd -BrowserOnly` to run the browser preview without the Tauri shell.
-Use `.\launch-asset-forge.cmd -Dev` to run the faster Tauri dev shell.
+The default launcher runs the faster Tauri dev shell for local work. Use `.\launch-asset-forge.cmd -Release` to build and launch the release executable.
 
 Project metadata can store a portable GitHub repository URL. The local external project folder is stored per machine by the desktop app, so the same Asset Forge project can bind to different local clone paths on different computers before running Git status, pull, or push.
+
+The first model-orientation workflow is documented in [`docs/model-orientation-tool.md`](docs/model-orientation-tool.md). It scans a linked project for GLB ship models and writes a per-model transform manifest that consuming games or Blender automation can apply. Follow-on model hardpoint and image optimization tooling is tracked in [`docs/tooling-checklist.md`](docs/tooling-checklist.md).
 
 ## Current Status
 
