@@ -1,28 +1,26 @@
 # Model Orientation Tool
 
-Asset Forge now includes a first-pass `Model Orientation` project tool for game repos that keep GLB ship assets under:
+Asset Forge includes a `Model Orientation` project tool for game repos that keep GLB assets in project-specific folders. The model folder is selectable in the tool; for Black Ledger Orbit ship models this is usually:
 
 ```text
 assets/models/ships
 ```
 
-The tool scans the linked machine-local project folder and writes per-model transform overrides to:
+The tool scans the selected folder inside the linked machine-local project folder and writes per-model transform overrides to a selectable handoff manifest. The default is:
 
 ```text
-content/assets/ship-model-orientation.manifest.json
+refs/assetForge/ship-model-orientation.manifest.json
 ```
 
-This is intentionally the immediate Black Ledger Orbit/Sector 404 path, not the
-final generic Asset Forge contract. The reusable version should move these paths
-into tool settings:
+Tool audit entries are also appended to:
 
-- input model folder
-- output manifest folder/file
-- optional generated-output folder for baked corrected models
-- manifest schema/name preset
+```text
+refs/assetForge/logs/asset-forge-audit.jsonl
+```
 
-That keeps the previewer and orientation editor generic while allowing each
-project to bring its own folder layout.
+This keeps the previewer and orientation editor generic while allowing each
+project to bring its own folder layout. The `refs/assetForge` folder is intended
+for coding-agent and downstream tooling handoff.
 
 Current manifest shape:
 
@@ -37,7 +35,8 @@ Current manifest shape:
       "rollDegrees": 0,
       "scale": 1
     }
-  }
+  },
+  "audit": []
 }
 ```
 

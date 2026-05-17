@@ -1,0 +1,23 @@
+version: 1
+updated: 2026-05-16
+roadmap:
+  - id: durable-handoff-foundation
+    horizon: now
+    status: in-progress
+    summary: Store tool output, audit logs, and agent-readable planning under refs.
+  - id: asset-prep-pipeline
+    horizon: now
+    status: in-progress
+    summary: Provide source orientation, Trellis batch conversion, model orientation, image optimization, and model optimization tools.
+  - id: review-and-promotion
+    horizon: next
+    status: planned
+    summary: Add explicit review, notes, approval, and promote-to-runtime workflows for staged assets.
+  - id: external-tool-config
+    horizon: next
+    status: planned
+    summary: Make ComfyUI, Blender, ImageMagick, glTF Transform, and gltfpack locations fully configurable per machine.
+  - id: asset-automation
+    horizon: later
+    status: planned
+    summary: Add Blender and optimizer automation for baking transforms, hardpoints, attachment nodes, and runtime-ready exports.

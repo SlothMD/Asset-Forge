@@ -1,0 +1,8 @@
+version: 1
+scope: Asset Forge UI
+instructions:
+  - Whenever an editable path or file target is presented, include a small folder icon button which browses to the target.
+  - Path and file browsers should default to the current path or file value when present.
+  - If no current path or file value is present, path and file browsers should default to the last selected folder when available.
+  - Image previewers should center images in the preview pane and leave plenty of space to view the image.
+  - Page layouts should be clean and compact.

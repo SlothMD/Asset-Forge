@@ -1,0 +1,31 @@
+version: 1
+updated: 2026-05-16
+todos:
+  - id: model-optimizer-existing-staging-awareness
+    status: open
+    area: model-optimization
+    summary: Detect existing staged optimization outputs and manifests when the tool opens or scans.
+    details: Surface prior optimization runs from refs/assetForge/model-optimization.manifest.json and tmp/asset-forge-optimized-models so users can review existing results without rerunning optimization.
+  - id: model-optimizer-review-notes
+    status: open
+    area: model-optimization
+    summary: Let users mark reviewed optimized models and add rework notes.
+    details: Persist review decisions in a handoff manifest under refs/assetForge and append audit log entries.
+  - id: model-optimizer-promote-runtime-assets
+    status: open
+    area: model-optimization
+    summary: Add a promote/copy-to-runtime step after staged optimized models are reviewed.
+    details: Copy approved staged outputs into the configured runtime asset folder and produce an implementation handoff manifest.
+  - id: model-optimizer-progress
+    status: open
+    area: model-optimization
+    summary: Add progress reporting and cancellation for long model optimization runs.
+  - id: configured-model-optimizer-executables
+    status: open
+    area: machine-config
+    summary: Allow model optimizer tools to use configured local executables such as gltfpack or gltf-transform instead of always using npx.
+  - id: rust-msvc-sdk-linker
+    status: blocked
+    area: build
+    summary: Rust cargo check is blocked by missing MSVC/Windows SDK runtime library msvcrt.lib.
+    details: Cargo and rustup are installed, but link.exe cannot find msvcrt.lib even under the Visual Studio developer shell. Repair/install Windows SDK C++ libraries.

@@ -1,6 +1,6 @@
 use serde::{Deserialize, Serialize};
 use std::{
-    collections::HashMap,
+    collections::{BTreeMap, HashMap},
     fs,
     io::BufWriter,
     path::{Path, PathBuf},
@@ -114,6 +114,8 @@ struct ShipModelOrientationManifest {
     schema_version: String,
     updated_at: String,
     models: HashMap<String, ShipModelTransform>,
+    #[serde(default)]
+    audit: Vec<HandoffAuditEntry>,
 }
 
 #[derive(Debug, Serialize)]
@@ -129,13 +131,24 @@ struct ShipModelOrientationEntry {
 #[serde(rename_all = "camelCase")]
 struct ShipModelOrientationCatalog {
     manifest_path: String,
+    model_folder: String,
     models: Vec<ShipModelOrientationEntry>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct ShipModelOrientationRequest {
+    project_path: String,
+    model_folder: String,
+    manifest_path: String,
 }
 
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct ShipModelOrientationUpdate {
     project_path: String,
+    model_folder: String,
+    manifest_path: String,
     model_path: String,
     transform: ShipModelTransform,
 }
@@ -144,6 +157,7 @@ struct ShipModelOrientationUpdate {
 #[serde(rename_all = "camelCase")]
 struct ShipModelPreviewRequest {
     project_path: String,
+    model_folder: String,
     model_path: String,
 }
 
@@ -207,6 +221,243 @@ struct ImageOptimizeResult {
     outputs: Vec<ImageOptimizeEntry>,
 }
 
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct ModelScanRequest {
+    project_path: String,
+    source_folder: String,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct ModelAssetEntry {
+    absolute_path: String,
+    relative_path: String,
+    file_name: String,
+    file_size_bytes: u64,
+    triangle_count: u64,
+    opportunities: Vec<String>,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct ModelScanResult {
+    source_folder: String,
+    assets: Vec<ModelAssetEntry>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct ModelOptimizeRequest {
+    project_path: String,
+    source_folder: String,
+    staging_folder: String,
+    manifest_path: String,
+    compression: String,
+    texture_compress: String,
+    simplify: bool,
+    target_triangles: u64,
+    force: bool,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct ModelOptimizeEntry {
+    source_path: String,
+    output_path: String,
+    source_size_bytes: u64,
+    output_size_bytes: u64,
+    source_triangles: u64,
+    target_triangles: u64,
+    simplify_ratio: f32,
+    action: String,
+    command: String,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct ModelOptimizeResult {
+    staging_folder: String,
+    manifest_path: String,
+    outputs: Vec<ModelOptimizeEntry>,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct ModelOptimizationManifest {
+    schema_version: String,
+    updated_at: String,
+    tool: String,
+    source_folder: String,
+    staging_folder: String,
+    outputs: Vec<ModelOptimizeEntry>,
+    audit: Vec<HandoffAuditEntry>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct TrellisBatchRequest {
+    project_path: String,
+    source_folder: String,
+    final_output_folder: String,
+    workflow_path: String,
+    comfy_url: String,
+    comfy_output_folder: String,
+    staging_folder: String,
+    orientation_csv: String,
+    output_suffix: String,
+    limit: i32,
+    target_face_count: i32,
+    texture_size: i32,
+    force: bool,
+    dry_run: bool,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct TrellisBatchResult {
+    command: String,
+    status: i32,
+    stdout: String,
+    stderr: String,
+}
+
+#[derive(Debug, Deserialize, Serialize, Clone)]
+#[serde(rename_all = "camelCase")]
+struct SourceImageTransform {
+    #[serde(default)]
+    rotate_degrees: f32,
+    #[serde(default)]
+    flip_horizontal: bool,
+    #[serde(default)]
+    flip_vertical: bool,
+}
+
+impl Default for SourceImageTransform {
+    fn default() -> Self {
+        Self {
+            rotate_degrees: 0.0,
+            flip_horizontal: false,
+            flip_vertical: false,
+        }
+    }
+}
+
+#[derive(Debug, Deserialize, Serialize, Clone)]
+#[serde(rename_all = "camelCase")]
+struct SourceImageOrientationEntry {
+    file_name: String,
+    relative_path: String,
+    #[serde(default)]
+    absolute_path: String,
+    transform: SourceImageTransform,
+    #[serde(default)]
+    asset_role: String,
+    #[serde(default)]
+    notes: String,
+    updated_at: String,
+}
+
+#[derive(Debug, Deserialize, Serialize, Clone)]
+#[serde(rename_all = "camelCase")]
+struct HandoffAuditEntry {
+    timestamp: String,
+    tool: String,
+    action: String,
+    target: String,
+    summary: String,
+}
+
+#[derive(Debug, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct SourceImageOrientationManifest {
+    schema_version: String,
+    updated_at: String,
+    tool: String,
+    source_folder: String,
+    assets: BTreeMap<String, SourceImageOrientationEntry>,
+    audit: Vec<HandoffAuditEntry>,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct SourceImageOrientationCatalog {
+    manifest_path: String,
+    source_folder: String,
+    assets: Vec<SourceImageOrientationEntry>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct SourceImageOrientationRequest {
+    project_path: String,
+    source_folder: String,
+    manifest_path: String,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct SourceImageOrientationUpdate {
+    project_path: String,
+    source_folder: String,
+    manifest_path: String,
+    relative_path: String,
+    transform: SourceImageTransform,
+    asset_role: String,
+    notes: String,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct SourceImagePreviewRequest {
+    absolute_path: String,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct ModelAbsolutePreviewRequest {
+    project_path: String,
+    absolute_path: String,
+}
+
+#[derive(Debug, Deserialize, Serialize, Clone)]
+#[serde(rename_all = "camelCase")]
+struct MachineToolConfig {
+    id: String,
+    label: String,
+    kind: String,
+    executable_path: String,
+    url: String,
+    working_directory: String,
+    notes: String,
+    enabled: bool,
+}
+
+#[derive(Debug, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct MachineConfig {
+    schema_version: String,
+    computer_name: String,
+    updated_at: String,
+    tools: Vec<MachineToolConfig>,
+    audit: Vec<HandoffAuditEntry>,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct MachineConfigReadout {
+    path: String,
+    config: MachineConfig,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct PathPickerRequest {
+    kind: String,
+    title: String,
+    initial_path: String,
+}
+
 fn default_transform_scale() -> f32 {
     1.0
 }
@@ -236,11 +487,40 @@ fn local_folder_for_project(project_path: &Path) -> Result<PathBuf, String> {
     Ok(local_folder_path)
 }
 
-fn ship_model_manifest_path(local_folder: &Path) -> PathBuf {
-    local_folder
-        .join("content")
-        .join("assets")
-        .join("ship-model-orientation.manifest.json")
+fn asset_forge_refs_dir(local_folder: &Path) -> PathBuf {
+    local_folder.join("refs").join("assetForge")
+}
+
+fn asset_forge_logs_dir(local_folder: &Path) -> PathBuf {
+    asset_forge_refs_dir(local_folder).join("logs")
+}
+
+fn project_audit_log_path(local_folder: &Path) -> PathBuf {
+    asset_forge_logs_dir(local_folder).join("asset-forge-audit.jsonl")
+}
+
+fn ensure_asset_forge_refs(local_folder: &Path) -> Result<(), String> {
+    fs::create_dir_all(asset_forge_logs_dir(local_folder)).map_err(|error| {
+        format!(
+            "Could not create Asset Forge refs folder {}: {error}",
+            asset_forge_logs_dir(local_folder).display()
+        )
+    })
+}
+
+fn append_project_audit_log(local_folder: &Path, entry: &HandoffAuditEntry) -> Result<(), String> {
+    ensure_asset_forge_refs(local_folder)?;
+    let path = project_audit_log_path(local_folder);
+    let serialized = serde_json::to_string(entry)
+        .map_err(|error| format!("Could not serialize audit log entry: {error}"))?;
+    use std::io::Write;
+    let mut file = fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(&path)
+        .map_err(|error| format!("Could not open audit log {}: {error}", path.display()))?;
+    writeln!(file, "{serialized}")
+        .map_err(|error| format!("Could not write audit log {}: {error}", path.display()))
 }
 
 fn read_ship_model_manifest(path: &Path) -> Result<ShipModelOrientationManifest, String> {
@@ -249,6 +529,7 @@ fn read_ship_model_manifest(path: &Path) -> Result<ShipModelOrientationManifest,
             schema_version: SCHEMA_VERSION.to_string(),
             updated_at: now_isoish(),
             models: HashMap::new(),
+            audit: Vec::new(),
         });
     }
 
@@ -271,6 +552,15 @@ fn write_ship_model_manifest(
         .map_err(|error| format!("Could not serialize ship model orientation manifest: {error}"))?;
     fs::write(path, format!("{serialized}\n"))
         .map_err(|error| format!("Could not write {}: {error}", path.display()))
+}
+
+fn resolve_project_file(project_path: &str, path: &str) -> Result<PathBuf, String> {
+    let candidate = PathBuf::from(path.trim());
+    if candidate.is_absolute() {
+        return Ok(candidate);
+    }
+
+    Ok(local_folder_for_project(&PathBuf::from(project_path))?.join(candidate))
 }
 
 fn collect_glb_files(root: &Path, files: &mut Vec<PathBuf>) -> Result<(), String> {
@@ -337,6 +627,63 @@ fn resolve_project_folder(project_path: &str, folder: &str) -> Result<PathBuf, S
     }
 
     Ok(local_folder_for_project(&PathBuf::from(project_path))?.join(path))
+}
+
+fn default_source_orientation_manifest(
+    source_folder: &Path,
+    manifest_path: &Path,
+) -> SourceImageOrientationManifest {
+    SourceImageOrientationManifest {
+        schema_version: SCHEMA_VERSION.to_string(),
+        updated_at: now_isoish(),
+        tool: "source-image-orientation".to_string(),
+        source_folder: source_folder.to_string_lossy().to_string(),
+        assets: BTreeMap::new(),
+        audit: vec![HandoffAuditEntry {
+            timestamp: now_isoish(),
+            tool: "source-image-orientation".to_string(),
+            action: "created-manifest".to_string(),
+            target: manifest_path.to_string_lossy().to_string(),
+            summary: "Initialized source image orientation handoff manifest.".to_string(),
+        }],
+    }
+}
+
+fn read_source_orientation_manifest(
+    source_folder: &Path,
+    manifest_path: &Path,
+) -> Result<SourceImageOrientationManifest, String> {
+    if !manifest_path.exists() {
+        return Ok(default_source_orientation_manifest(source_folder, manifest_path));
+    }
+
+    let contents = fs::read_to_string(manifest_path)
+        .map_err(|error| format!("Could not read {}: {error}", manifest_path.display()))?;
+    serde_json::from_str(&contents)
+        .map_err(|error| format!("Could not parse {}: {error}", manifest_path.display()))
+}
+
+fn write_source_orientation_manifest(
+    manifest_path: &Path,
+    manifest: &SourceImageOrientationManifest,
+) -> Result<(), String> {
+    if let Some(parent) = manifest_path.parent() {
+        fs::create_dir_all(parent)
+            .map_err(|error| format!("Could not create {}: {error}", parent.display()))?;
+    }
+    let serialized = serde_json::to_string_pretty(manifest)
+        .map_err(|error| format!("Could not serialize source image orientation manifest: {error}"))?;
+    fs::write(manifest_path, format!("{serialized}\n"))
+        .map_err(|error| format!("Could not write {}: {error}", manifest_path.display()))
+}
+
+fn asset_forge_root() -> Result<PathBuf, String> {
+    PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .parent()
+        .and_then(Path::parent)
+        .and_then(Path::parent)
+        .map(Path::to_path_buf)
+        .ok_or_else(|| "Could not resolve Asset Forge repository root.".to_string())
 }
 
 fn relative_path_string(root: &Path, path: &Path) -> String {
@@ -407,6 +754,75 @@ fn image_opportunities(
     opportunities
 }
 
+fn model_opportunities(path: &Path, size: u64) -> Vec<String> {
+    let mut opportunities = Vec::new();
+    let name = path
+        .file_name()
+        .map(|name| name.to_string_lossy().to_ascii_lowercase())
+        .unwrap_or_default();
+
+    if size > 10_000_000 {
+        opportunities.push("large-glb-optimize-for-runtime".to_string());
+    }
+    if name.contains("-raw") {
+        opportunities.push("raw-generated-model".to_string());
+    }
+    if !name.contains("optimized") {
+        opportunities.push("missing-optimized-name".to_string());
+    }
+
+    opportunities
+}
+
+fn inspect_model_triangles(path: &Path) -> u64 {
+    let output = Command::new(npx_executable())
+        .args([
+            "--yes",
+            "@gltf-transform/cli",
+            "inspect",
+            &path.to_string_lossy(),
+        ])
+        .output();
+
+    let Ok(output) = output else {
+        return 0;
+    };
+    if !output.status.success() {
+        return 0;
+    }
+
+    let text = String::from_utf8_lossy(&output.stdout);
+    let mut in_meshes = false;
+    let mut total = 0_u64;
+    for line in text.lines() {
+        if line.contains("MESHES") {
+            in_meshes = true;
+            continue;
+        }
+        if in_meshes && line.contains("MATERIALS") {
+            break;
+        }
+        if !in_meshes || !line.contains("TRIANGLES") {
+            continue;
+        }
+
+        let normalized = line
+            .replace('\u{001b}', "")
+            .replace("[90m", "")
+            .replace("[39m", "")
+            .replace("[31m", "");
+        let parts: Vec<&str> = normalized.split('│').map(str::trim).collect();
+        if let Some(value) = parts.get(5) {
+            let digits = value.replace(',', "");
+            if let Ok(count) = digits.parse::<u64>() {
+                total = total.saturating_add(count);
+            }
+        }
+    }
+
+    total
+}
+
 fn res_path_for_model(local_folder: &Path, model_path: &Path) -> String {
     let relative = model_path.strip_prefix(local_folder).unwrap_or(model_path);
     format!(
@@ -418,16 +834,19 @@ fn res_path_for_model(local_folder: &Path, model_path: &Path) -> String {
     )
 }
 
-fn model_path_from_res_path(local_folder: &Path, model_path: &str) -> Result<PathBuf, String> {
+fn model_path_from_res_path(
+    local_folder: &Path,
+    allowed_model_folder: &Path,
+    model_path: &str,
+) -> Result<PathBuf, String> {
     let relative = model_path
         .strip_prefix("res://")
         .ok_or_else(|| format!("Unsupported model path: {}", model_path))?;
     let candidate = local_folder.join(relative.replace('/', std::path::MAIN_SEPARATOR_STR));
-    let model_root = local_folder.join("assets").join("models").join("ships");
-    let canonical_model_root = model_root.canonicalize().map_err(|error| {
+    let canonical_model_root = allowed_model_folder.canonicalize().map_err(|error| {
         format!(
             "Unable to resolve model folder {}: {}",
-            model_root.display(),
+            allowed_model_folder.display(),
             error
         )
     })?;
@@ -441,7 +860,7 @@ fn model_path_from_res_path(local_folder: &Path, model_path: &str) -> Result<Pat
 
     if !canonical_candidate.starts_with(&canonical_model_root) {
         return Err(format!(
-            "Model path is outside the ship model folder: {}",
+            "Model path is outside the selected model folder: {}",
             model_path
         ));
     }
@@ -495,6 +914,16 @@ fn app_data_dir() -> Result<PathBuf, String> {
 
 fn machine_links_path() -> Result<PathBuf, String> {
     Ok(app_data_dir()?.join("machine-project-links.json"))
+}
+
+fn machine_config_path() -> Result<PathBuf, String> {
+    Ok(app_data_dir()?.join("machine-config.json"))
+}
+
+fn current_computer_name() -> String {
+    std::env::var("COMPUTERNAME")
+        .or_else(|_| std::env::var("HOSTNAME"))
+        .unwrap_or_else(|_| "unknown-computer".to_string())
 }
 
 fn read_machine_links() -> Result<HashMap<String, String>, String> {
@@ -804,14 +1233,130 @@ fn sync_external_project(request: ProjectSyncRequest) -> Result<ProjectSyncResul
     }
 }
 
+fn default_machine_config() -> MachineConfig {
+    MachineConfig {
+        schema_version: SCHEMA_VERSION.to_string(),
+        computer_name: current_computer_name(),
+        updated_at: now_isoish(),
+        tools: vec![
+            MachineToolConfig {
+                id: "comfyui".to_string(),
+                label: "ComfyUI".to_string(),
+                kind: "http-service".to_string(),
+                executable_path: String::new(),
+                url: "http://127.0.0.1:8000".to_string(),
+                working_directory: String::new(),
+                notes: "Used by Trellis batch conversion.".to_string(),
+                enabled: true,
+            },
+            MachineToolConfig {
+                id: "blender".to_string(),
+                label: "Blender".to_string(),
+                kind: "desktop-app".to_string(),
+                executable_path: String::new(),
+                url: String::new(),
+                working_directory: String::new(),
+                notes: "Optional automation target for model transforms and optimization.".to_string(),
+                enabled: false,
+            },
+            MachineToolConfig {
+                id: "imagemagick".to_string(),
+                label: "ImageMagick".to_string(),
+                kind: "cli".to_string(),
+                executable_path: String::new(),
+                url: String::new(),
+                working_directory: String::new(),
+                notes: "Optional external image optimization backend.".to_string(),
+                enabled: false,
+            },
+        ],
+        audit: vec![HandoffAuditEntry {
+            timestamp: now_isoish(),
+            tool: "machine-config".to_string(),
+            action: "created-default-config".to_string(),
+            target: current_computer_name(),
+            summary: "Initialized machine-local tool configuration.".to_string(),
+        }],
+    }
+}
+
+fn read_machine_config() -> Result<MachineConfig, String> {
+    let path = machine_config_path()?;
+    if !path.exists() {
+        return Ok(default_machine_config());
+    }
+
+    let contents = fs::read_to_string(&path)
+        .map_err(|error| format!("Could not read {}: {error}", path.display()))?;
+    let mut config: MachineConfig = serde_json::from_str(&contents)
+        .map_err(|error| format!("Could not parse {}: {error}", path.display()))?;
+    if config.computer_name.trim().is_empty() {
+        config.computer_name = current_computer_name();
+    }
+    Ok(config)
+}
+
+fn write_machine_config(mut config: MachineConfig) -> Result<MachineConfigReadout, String> {
+    let path = machine_config_path()?;
+    config.computer_name = current_computer_name();
+    config.updated_at = now_isoish();
+    config.audit.push(HandoffAuditEntry {
+        timestamp: config.updated_at.clone(),
+        tool: "machine-config".to_string(),
+        action: "saved-config".to_string(),
+        target: config.computer_name.clone(),
+        summary: format!("Saved {} configured tool entries.", config.tools.len()),
+    });
+
+    if let Some(parent) = path.parent() {
+        fs::create_dir_all(parent)
+            .map_err(|error| format!("Could not create {}: {error}", parent.display()))?;
+    }
+    let serialized = serde_json::to_string_pretty(&config)
+        .map_err(|error| format!("Could not serialize machine config: {error}"))?;
+    fs::write(&path, format!("{serialized}\n"))
+        .map_err(|error| format!("Could not write {}: {error}", path.display()))?;
+
+    Ok(MachineConfigReadout {
+        path: path.to_string_lossy().to_string(),
+        config,
+    })
+}
+
+fn powershell_single_quoted(value: &str) -> String {
+    format!("'{}'", value.replace('\'', "''"))
+}
+
+fn powershell_executable() -> String {
+    Command::new("pwsh")
+        .args(["-NoProfile", "-Command", "$PSVersionTable.PSVersion.ToString()"])
+        .output()
+        .ok()
+        .filter(|output| output.status.success())
+        .map(|_| "pwsh".to_string())
+        .unwrap_or_else(|| "powershell".to_string())
+}
+
+fn npx_executable() -> String {
+    if cfg!(windows) {
+        "npx.cmd".to_string()
+    } else {
+        "npx".to_string()
+    }
+}
+
 #[tauri::command]
-fn list_ship_model_orientations(project_path: String) -> Result<ShipModelOrientationCatalog, String> {
-    let project_path = PathBuf::from(project_path);
+fn list_ship_model_orientations(
+    request: ShipModelOrientationRequest,
+) -> Result<ShipModelOrientationCatalog, String> {
+    let project_path = PathBuf::from(&request.project_path);
     let local_folder = local_folder_for_project(&project_path)?;
-    let manifest_path = ship_model_manifest_path(&local_folder);
+    ensure_asset_forge_refs(&local_folder)?;
+    let model_folder = resolve_project_folder(&request.project_path, &request.model_folder)?;
+    let manifest_path = resolve_project_file(&request.project_path, &request.manifest_path)?;
     let manifest = read_ship_model_manifest(&manifest_path)?;
     let mut files = Vec::new();
-    collect_glb_files(&local_folder.join("assets").join("models").join("ships"), &mut files)?;
+    collect_glb_files(&model_folder, &mut files)?;
     files.sort();
 
     let models = files
@@ -837,6 +1382,7 @@ fn list_ship_model_orientations(project_path: String) -> Result<ShipModelOrienta
 
     Ok(ShipModelOrientationCatalog {
         manifest_path: manifest_path.to_string_lossy().to_string(),
+        model_folder: model_folder.to_string_lossy().to_string(),
         models,
     })
 }
@@ -847,25 +1393,75 @@ fn save_ship_model_orientation(
 ) -> Result<ShipModelOrientationCatalog, String> {
     let project_path = PathBuf::from(&update.project_path);
     let local_folder = local_folder_for_project(&project_path)?;
-    let manifest_path = ship_model_manifest_path(&local_folder);
+    ensure_asset_forge_refs(&local_folder)?;
+    let manifest_path = resolve_project_file(&update.project_path, &update.manifest_path)?;
     let mut manifest = read_ship_model_manifest(&manifest_path)?;
-    manifest.updated_at = now_isoish();
+    let now = now_isoish();
+    let audit = HandoffAuditEntry {
+        timestamp: now.clone(),
+        tool: "model-orientation".to_string(),
+        action: "saved-orientation".to_string(),
+        target: update.model_path.clone(),
+        summary: "Updated GLB model orientation metadata for downstream runtime/import tooling.".to_string(),
+    };
+    manifest.updated_at = now;
     manifest
         .models
         .insert(update.model_path, update.transform);
+    manifest.audit.push(audit.clone());
     write_ship_model_manifest(&manifest_path, &manifest)?;
-    list_ship_model_orientations(update.project_path)
+    append_project_audit_log(&local_folder, &audit)?;
+    list_ship_model_orientations(ShipModelOrientationRequest {
+        project_path: update.project_path,
+        model_folder: update.model_folder,
+        manifest_path: update.manifest_path,
+    })
 }
 
 #[tauri::command]
 fn load_ship_model_preview(request: ShipModelPreviewRequest) -> Result<Vec<u8>, String> {
-    let project_path = PathBuf::from(request.project_path);
+    let project_path = PathBuf::from(&request.project_path);
     let local_folder = local_folder_for_project(&project_path)?;
-    let model_path = model_path_from_res_path(&local_folder, &request.model_path)?;
+    let model_folder = resolve_project_folder(&request.project_path, &request.model_folder)?;
+    let model_path = model_path_from_res_path(&local_folder, &model_folder, &request.model_path)?;
     fs::read(&model_path).map_err(|error| {
         format!(
             "Unable to read model preview {}: {}",
             model_path.display(),
+            error
+        )
+    })
+}
+
+#[tauri::command]
+fn load_absolute_model_preview(request: ModelAbsolutePreviewRequest) -> Result<Vec<u8>, String> {
+    let local_folder = local_folder_for_project(&PathBuf::from(&request.project_path))?;
+    let candidate = PathBuf::from(&request.absolute_path);
+    let canonical_local = local_folder.canonicalize().map_err(|error| {
+        format!(
+            "Unable to resolve local project folder {}: {}",
+            local_folder.display(),
+            error
+        )
+    })?;
+    let canonical_candidate = candidate.canonicalize().map_err(|error| {
+        format!(
+            "Unable to resolve model path {}: {}",
+            candidate.display(),
+            error
+        )
+    })?;
+    if !canonical_candidate.starts_with(&canonical_local) {
+        return Err(format!(
+            "Model path is outside the linked project folder: {}",
+            candidate.display()
+        ));
+    }
+
+    fs::read(&canonical_candidate).map_err(|error| {
+        format!(
+            "Unable to read model preview {}: {}",
+            canonical_candidate.display(),
             error
         )
     })
@@ -1011,6 +1607,457 @@ fn optimize_image_assets(request: ImageOptimizeRequest) -> Result<ImageOptimizeR
 }
 
 #[tauri::command]
+fn scan_model_assets(request: ModelScanRequest) -> Result<ModelScanResult, String> {
+    let source_folder = resolve_project_folder(&request.project_path, &request.source_folder)?;
+    if !source_folder.exists() {
+        return Err(format!(
+            "Model source folder does not exist: {}",
+            source_folder.display()
+        ));
+    }
+
+    let mut files = Vec::new();
+    collect_glb_files(&source_folder, &mut files)?;
+    files.sort();
+
+    let mut assets = Vec::new();
+    for path in files {
+        let metadata = fs::metadata(&path)
+            .map_err(|error| format!("Could not read metadata for {}: {error}", path.display()))?;
+        let triangle_count = inspect_model_triangles(&path);
+        assets.push(ModelAssetEntry {
+            absolute_path: path.to_string_lossy().to_string(),
+            relative_path: relative_path_string(&source_folder, &path),
+            file_name: path
+                .file_name()
+                .map(|name| name.to_string_lossy().to_string())
+                .unwrap_or_default(),
+            file_size_bytes: metadata.len(),
+            triangle_count,
+            opportunities: model_opportunities(&path, metadata.len()),
+        });
+    }
+
+    Ok(ModelScanResult {
+        source_folder: source_folder.to_string_lossy().to_string(),
+        assets,
+    })
+}
+
+#[tauri::command]
+fn optimize_model_assets(request: ModelOptimizeRequest) -> Result<ModelOptimizeResult, String> {
+    let local_folder = local_folder_for_project(&PathBuf::from(&request.project_path))?;
+    ensure_asset_forge_refs(&local_folder)?;
+    let source_folder = resolve_project_folder(&request.project_path, &request.source_folder)?;
+    let staging_folder = resolve_project_folder(&request.project_path, &request.staging_folder)?;
+    let manifest_path = resolve_project_file(&request.project_path, &request.manifest_path)?;
+    if !source_folder.exists() {
+        return Err(format!(
+            "Model source folder does not exist: {}",
+            source_folder.display()
+        ));
+    }
+
+    fs::create_dir_all(&staging_folder).map_err(|error| {
+        format!(
+            "Could not create model staging folder {}: {error}",
+            staging_folder.display()
+        )
+    })?;
+
+    let mut files = Vec::new();
+    collect_glb_files(&source_folder, &mut files)?;
+    files.sort();
+
+    let compression = request.compression.trim().to_ascii_lowercase();
+    let texture_compress = request.texture_compress.trim().to_ascii_lowercase();
+    let mut outputs = Vec::new();
+
+    for path in files {
+        let relative = path.strip_prefix(&source_folder).unwrap_or(&path);
+        let output_path = staging_folder.join(relative);
+        if output_path.exists() && !request.force {
+            continue;
+        }
+        if let Some(parent) = output_path.parent() {
+            fs::create_dir_all(parent).map_err(|error| {
+                format!("Could not create output folder {}: {error}", parent.display())
+            })?;
+        }
+
+        let source_metadata = fs::metadata(&path)
+            .map_err(|error| format!("Could not read metadata for {}: {error}", path.display()))?;
+        let source_triangles = inspect_model_triangles(&path);
+        let simplify_ratio = if request.simplify && request.target_triangles > 0 && source_triangles > 0 {
+            ((request.target_triangles as f32) / (source_triangles as f32)).clamp(0.01, 1.0)
+        } else {
+            0.0
+        };
+
+        let mut args = vec![
+            "--yes".to_string(),
+            "@gltf-transform/cli".to_string(),
+            "optimize".to_string(),
+            path.to_string_lossy().to_string(),
+            output_path.to_string_lossy().to_string(),
+        ];
+        if !compression.is_empty() && compression != "none" && compression != "false" {
+            args.push("--compress".to_string());
+            args.push(compression.clone());
+        }
+        if !texture_compress.is_empty()
+            && texture_compress != "none"
+            && texture_compress != "false"
+        {
+            args.push("--texture-compress".to_string());
+            args.push(texture_compress.clone());
+        }
+        args.push("--simplify".to_string());
+        args.push(if request.simplify { "true" } else { "false" }.to_string());
+        if request.simplify && simplify_ratio > 0.0 && simplify_ratio < 1.0 {
+            args.push("--simplify-ratio".to_string());
+            args.push(format!("{simplify_ratio:.3}"));
+        }
+
+        let output = Command::new(npx_executable())
+            .args(&args)
+            .output()
+            .map_err(|error| format!("Could not launch glTF optimizer through npx: {error}"))?;
+        if !output.status.success() {
+            return Err(format!(
+                "Model optimization failed for {}.\n{}\n{}",
+                path.display(),
+                String::from_utf8_lossy(&output.stdout),
+                String::from_utf8_lossy(&output.stderr)
+            ));
+        }
+
+        let output_metadata = fs::metadata(&output_path)
+            .map_err(|error| format!("Could not read {}: {error}", output_path.display()))?;
+        outputs.push(ModelOptimizeEntry {
+            source_path: path.to_string_lossy().to_string(),
+            output_path: output_path.to_string_lossy().to_string(),
+            source_size_bytes: source_metadata.len(),
+            output_size_bytes: output_metadata.len(),
+            source_triangles,
+            target_triangles: request.target_triangles,
+            simplify_ratio,
+            action: "gltf-transform-optimize".to_string(),
+            command: format!("npx {}", args.join(" ")),
+        });
+    }
+
+    let now = now_isoish();
+    let audit = HandoffAuditEntry {
+        timestamp: now.clone(),
+        tool: "model-optimization".to_string(),
+        action: "optimized-models".to_string(),
+        target: staging_folder.to_string_lossy().to_string(),
+        summary: format!("Optimized {} GLB model assets to staging.", outputs.len()),
+    };
+    let manifest = ModelOptimizationManifest {
+        schema_version: SCHEMA_VERSION.to_string(),
+        updated_at: now,
+        tool: "model-optimization".to_string(),
+        source_folder: source_folder.to_string_lossy().to_string(),
+        staging_folder: staging_folder.to_string_lossy().to_string(),
+        outputs,
+        audit: vec![audit.clone()],
+    };
+    if let Some(parent) = manifest_path.parent() {
+        fs::create_dir_all(parent)
+            .map_err(|error| format!("Could not create {}: {error}", parent.display()))?;
+    }
+    let serialized = serde_json::to_string_pretty(&manifest)
+        .map_err(|error| format!("Could not serialize model optimization manifest: {error}"))?;
+    fs::write(&manifest_path, format!("{serialized}\n"))
+        .map_err(|error| format!("Could not write {}: {error}", manifest_path.display()))?;
+    append_project_audit_log(&local_folder, &audit)?;
+
+    Ok(ModelOptimizeResult {
+        staging_folder: manifest.staging_folder,
+        manifest_path: manifest_path.to_string_lossy().to_string(),
+        outputs: manifest.outputs,
+    })
+}
+
+#[tauri::command]
+fn list_source_image_orientations(
+    request: SourceImageOrientationRequest,
+) -> Result<SourceImageOrientationCatalog, String> {
+    let local_folder = local_folder_for_project(&PathBuf::from(&request.project_path))?;
+    ensure_asset_forge_refs(&local_folder)?;
+    let source_folder = resolve_project_folder(&request.project_path, &request.source_folder)?;
+    let manifest_path = resolve_project_folder(&request.project_path, &request.manifest_path)?;
+    if !source_folder.exists() {
+        return Err(format!(
+            "Source image folder does not exist: {}",
+            source_folder.display()
+        ));
+    }
+
+    let manifest = read_source_orientation_manifest(&source_folder, &manifest_path)?;
+    let mut files = Vec::new();
+    collect_image_files(&source_folder, &mut files)?;
+    files.sort();
+
+    let assets = files
+        .into_iter()
+        .map(|path| {
+            let relative_path = relative_path_string(&source_folder, &path);
+            manifest
+                .assets
+                .get(&relative_path)
+                .cloned()
+                .unwrap_or_else(|| SourceImageOrientationEntry {
+                    file_name: path
+                        .file_name()
+                        .map(|name| name.to_string_lossy().to_string())
+                        .unwrap_or_else(|| relative_path.clone()),
+                    relative_path: relative_path.clone(),
+                    absolute_path: path.to_string_lossy().to_string(),
+                    transform: SourceImageTransform::default(),
+                    asset_role: String::new(),
+                    notes: String::new(),
+                    updated_at: String::new(),
+                })
+        })
+        .map(|mut entry| {
+            if entry.absolute_path.trim().is_empty() {
+                entry.absolute_path = source_folder.join(&entry.relative_path).to_string_lossy().to_string();
+            }
+            entry
+        })
+        .collect();
+
+    Ok(SourceImageOrientationCatalog {
+        manifest_path: manifest_path.to_string_lossy().to_string(),
+        source_folder: source_folder.to_string_lossy().to_string(),
+        assets,
+    })
+}
+
+#[tauri::command]
+fn save_source_image_orientation(
+    update: SourceImageOrientationUpdate,
+) -> Result<SourceImageOrientationCatalog, String> {
+    let local_folder = local_folder_for_project(&PathBuf::from(&update.project_path))?;
+    ensure_asset_forge_refs(&local_folder)?;
+    let source_folder = resolve_project_folder(&update.project_path, &update.source_folder)?;
+    let manifest_path = resolve_project_folder(&update.project_path, &update.manifest_path)?;
+    let mut manifest = read_source_orientation_manifest(&source_folder, &manifest_path)?;
+    let now = now_isoish();
+    let absolute_path = source_folder.join(&update.relative_path);
+    let file_name = absolute_path
+        .file_name()
+        .map(|name| name.to_string_lossy().to_string())
+        .unwrap_or_else(|| update.relative_path.clone());
+
+    manifest.updated_at = now.clone();
+    manifest.source_folder = source_folder.to_string_lossy().to_string();
+    manifest.assets.insert(
+        update.relative_path.clone(),
+        SourceImageOrientationEntry {
+            file_name,
+            relative_path: update.relative_path.clone(),
+            absolute_path: absolute_path.to_string_lossy().to_string(),
+            transform: update.transform,
+            asset_role: update.asset_role,
+            notes: update.notes,
+            updated_at: now.clone(),
+        },
+    );
+    let audit = HandoffAuditEntry {
+        timestamp: now,
+        tool: "source-image-orientation".to_string(),
+        action: "saved-orientation".to_string(),
+        target: update.relative_path,
+        summary: "Updated source image orientation metadata for downstream tools and game integration.".to_string(),
+    };
+    manifest.audit.push(audit.clone());
+    write_source_orientation_manifest(&manifest_path, &manifest)?;
+    append_project_audit_log(&local_folder, &audit)?;
+
+    list_source_image_orientations(SourceImageOrientationRequest {
+        project_path: update.project_path,
+        source_folder: update.source_folder,
+        manifest_path: update.manifest_path,
+    })
+}
+
+#[tauri::command]
+fn load_source_image_preview(request: SourceImagePreviewRequest) -> Result<Vec<u8>, String> {
+    let path = PathBuf::from(request.absolute_path);
+    fs::read(&path).map_err(|error| format!("Could not read image {}: {error}", path.display()))
+}
+
+#[tauri::command]
+fn get_machine_config() -> Result<MachineConfigReadout, String> {
+    let path = machine_config_path()?;
+    Ok(MachineConfigReadout {
+        path: path.to_string_lossy().to_string(),
+        config: read_machine_config()?,
+    })
+}
+
+#[tauri::command]
+fn save_machine_config(config: MachineConfig) -> Result<MachineConfigReadout, String> {
+    write_machine_config(config)
+}
+
+#[tauri::command]
+fn pick_path(request: PathPickerRequest) -> Result<Option<String>, String> {
+    let title = powershell_single_quoted(if request.title.trim().is_empty() {
+        "Select path"
+    } else {
+        request.title.trim()
+    });
+    let initial_path = request.initial_path.trim();
+    let initial = if initial_path.is_empty() {
+        String::new()
+    } else {
+        let path = PathBuf::from(initial_path);
+        let initial_dir = if path.is_dir() {
+            path
+        } else {
+            path.parent().map(Path::to_path_buf).unwrap_or(path)
+        };
+        initial_dir.to_string_lossy().to_string()
+    };
+    let initial = powershell_single_quoted(&initial);
+    let script = if request.kind.eq_ignore_ascii_case("folder") {
+        format!(
+            "Add-Type -AssemblyName System.Windows.Forms; $dialog = New-Object System.Windows.Forms.FolderBrowserDialog; $dialog.Description = {title}; if ({initial}.Length -gt 0) {{ $dialog.SelectedPath = {initial} }}; if ($dialog.ShowDialog() -eq [System.Windows.Forms.DialogResult]::OK) {{ $dialog.SelectedPath }}"
+        )
+    } else {
+        format!(
+            "Add-Type -AssemblyName System.Windows.Forms; $dialog = New-Object System.Windows.Forms.OpenFileDialog; $dialog.Title = {title}; $dialog.CheckFileExists = $false; if ({initial}.Length -gt 0) {{ $dialog.InitialDirectory = {initial} }}; if ($dialog.ShowDialog() -eq [System.Windows.Forms.DialogResult]::OK) {{ $dialog.FileName }}"
+        )
+    };
+
+    let shell = powershell_executable();
+    let output = Command::new(&shell)
+        .args(["-NoProfile", "-STA", "-Command", &script])
+        .output()
+        .map_err(|error| format!("Could not open path picker: {error}"))?;
+
+    if !output.status.success() {
+        return Err(String::from_utf8_lossy(&output.stderr).to_string());
+    }
+
+    let value = String::from_utf8_lossy(&output.stdout).trim().to_string();
+    if value.is_empty() {
+        Ok(None)
+    } else {
+        Ok(Some(value))
+    }
+}
+
+#[tauri::command]
+fn run_trellis_batch_conversion(request: TrellisBatchRequest) -> Result<TrellisBatchResult, String> {
+    let script_path = asset_forge_root()?
+        .join("tools")
+        .join("Convert-Trellis2Batch.ps1");
+    if !script_path.exists() {
+        return Err(format!(
+            "Trellis batch script not found: {}",
+            script_path.display()
+        ));
+    }
+
+    let source_folder = resolve_project_folder(&request.project_path, &request.source_folder)?;
+    let final_output_folder =
+        resolve_project_folder(&request.project_path, &request.final_output_folder)?;
+    let workflow_path = resolve_project_folder(&request.project_path, &request.workflow_path)?;
+    let comfy_output_folder =
+        resolve_project_folder(&request.project_path, &request.comfy_output_folder)?;
+    let staging_folder = if request.staging_folder.trim().is_empty() {
+        None
+    } else {
+        Some(resolve_project_folder(
+            &request.project_path,
+            &request.staging_folder,
+        )?)
+    };
+    let orientation_csv = if request.orientation_csv.trim().is_empty() {
+        None
+    } else {
+        Some(resolve_project_folder(
+            &request.project_path,
+            &request.orientation_csv,
+        )?)
+    };
+
+    let mut args = vec![
+        "-NoProfile".to_string(),
+        "-ExecutionPolicy".to_string(),
+        "Bypass".to_string(),
+        "-File".to_string(),
+        script_path.to_string_lossy().to_string(),
+        "-SourceDir".to_string(),
+        source_folder.to_string_lossy().to_string(),
+        "-FinalOutputDir".to_string(),
+        final_output_folder.to_string_lossy().to_string(),
+        "-WorkflowPath".to_string(),
+        workflow_path.to_string_lossy().to_string(),
+        "-ComfyUrl".to_string(),
+        request.comfy_url,
+        "-ComfyOutputDir".to_string(),
+        comfy_output_folder.to_string_lossy().to_string(),
+        "-TargetFaceCount".to_string(),
+        request.target_face_count.clamp(1_000, 1_000_000).to_string(),
+        "-TextureSize".to_string(),
+        request.texture_size.clamp(256, 4096).to_string(),
+    ];
+
+    if let Some(staging_folder) = staging_folder {
+        args.push("-StagingDir".to_string());
+        args.push(staging_folder.to_string_lossy().to_string());
+    }
+    if let Some(orientation_csv) = orientation_csv {
+        args.push("-OrientationCsv".to_string());
+        args.push(orientation_csv.to_string_lossy().to_string());
+    }
+    if !request.output_suffix.trim().is_empty() {
+        args.push("-OutputSuffix".to_string());
+        args.push(request.output_suffix);
+    }
+    if request.limit > 0 {
+        args.push("-Limit".to_string());
+        args.push(request.limit.to_string());
+    }
+    if request.force {
+        args.push("-Force".to_string());
+    }
+    if request.dry_run {
+        args.push("-WhatIfOnly".to_string());
+    }
+
+    let shell = powershell_executable();
+    let output = Command::new(&shell)
+        .args(&args)
+        .output()
+        .map_err(|error| format!("Could not launch PowerShell Trellis batch: {error}"))?;
+
+    let status = output.status.code().unwrap_or(-1);
+    let stdout = String::from_utf8_lossy(&output.stdout).to_string();
+    let stderr = String::from_utf8_lossy(&output.stderr).to_string();
+
+    if !output.status.success() {
+        return Err(format!(
+            "Trellis batch failed with status {status}.\n{stdout}\n{stderr}"
+        ));
+    }
+
+    Ok(TrellisBatchResult {
+        command: format!("{shell} {}", args.join(" ")),
+        status,
+        stdout,
+        stderr,
+    })
+}
+
+#[tauri::command]
 fn close_app(app: tauri::AppHandle) {
     app.exit(0);
 }
@@ -1029,8 +2076,18 @@ pub fn run() {
             list_ship_model_orientations,
             save_ship_model_orientation,
             load_ship_model_preview,
+            load_absolute_model_preview,
             scan_image_assets,
             optimize_image_assets,
+            scan_model_assets,
+            optimize_model_assets,
+            list_source_image_orientations,
+            save_source_image_orientation,
+            load_source_image_preview,
+            get_machine_config,
+            save_machine_config,
+            pick_path,
+            run_trellis_batch_conversion,
             close_app
         ])
         .run(tauri::generate_context!())

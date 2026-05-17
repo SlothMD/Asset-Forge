@@ -2,6 +2,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { FormEvent, StrictMode, useEffect, useMemo, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
 import * as THREE from "three";
+import { MeshoptDecoder } from "three/examples/jsm/libs/meshopt_decoder.module.js";
 import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
 import "./styles.css";
 
@@ -50,7 +51,14 @@ type ProjectSyncResult = {
   output: string;
 };
 
-type ActiveTool = "steam-launch-prep" | "model-orientation" | "image-optimization" | null;
+type ActiveTool =
+  | "steam-launch-prep"
+  | "model-orientation"
+  | "model-optimization"
+  | "source-image-orientation"
+  | "image-optimization"
+  | "trellis-batch"
+  | null;
 
 type ShipModelTransform = {
   yawDegrees: number;
@@ -68,6 +76,7 @@ type ShipModelOrientationEntry = {
 
 type ShipModelOrientationCatalog = {
   manifestPath: string;
+  modelFolder: string;
   models: ShipModelOrientationEntry[];
 };
 
@@ -105,8 +114,100 @@ type ImageOptimizeResult = {
   outputs: ImageOptimizeEntry[];
 };
 
+type ModelAssetEntry = {
+  absolutePath: string;
+  relativePath: string;
+  fileName: string;
+  fileSizeBytes: number;
+  triangleCount: number;
+  opportunities: string[];
+};
+
+type ModelScanResult = {
+  sourceFolder: string;
+  assets: ModelAssetEntry[];
+};
+
+type ModelOptimizeEntry = {
+  sourcePath: string;
+  outputPath: string;
+  sourceSizeBytes: number;
+  outputSizeBytes: number;
+  sourceTriangles: number;
+  targetTriangles: number;
+  simplifyRatio: number;
+  action: string;
+  command: string;
+};
+
+type ModelOptimizeResult = {
+  stagingFolder: string;
+  manifestPath: string;
+  outputs: ModelOptimizeEntry[];
+};
+
+type TrellisBatchResult = {
+  command: string;
+  status: number;
+  stdout: string;
+  stderr: string;
+};
+
+type SourceImageTransform = {
+  rotateDegrees: number;
+  flipHorizontal: boolean;
+  flipVertical: boolean;
+};
+
+type SourceImageOrientationEntry = {
+  fileName: string;
+  relativePath: string;
+  absolutePath: string;
+  transform: SourceImageTransform;
+  assetRole: string;
+  notes: string;
+  updatedAt: string;
+};
+
+type SourceImageOrientationCatalog = {
+  manifestPath: string;
+  sourceFolder: string;
+  assets: SourceImageOrientationEntry[];
+};
+
+type MachineToolConfig = {
+  id: string;
+  label: string;
+  kind: string;
+  executablePath: string;
+  url: string;
+  workingDirectory: string;
+  notes: string;
+  enabled: boolean;
+};
+
+type MachineConfig = {
+  schemaVersion: string;
+  computerName: string;
+  updatedAt: string;
+  tools: MachineToolConfig[];
+  audit: {
+    timestamp: string;
+    tool: string;
+    action: string;
+    target: string;
+    summary: string;
+  }[];
+};
+
+type MachineConfigReadout = {
+  path: string;
+  config: MachineConfig;
+};
+
 const fallbackProjectKey = "asset-forge-projects";
 const fallbackProjectFilePrefix = "asset-forge-project-file:";
+const lastPathPickerFolderKey = "asset-forge-last-path-picker-folder";
 
 function isTauriRuntime() {
   return "__TAURI_INTERNALS__" in window;
@@ -302,40 +403,63 @@ const projectApi = {
     };
   },
 
-  async listShipModelOrientations(projectPath: string): Promise<ShipModelOrientationCatalog> {
+  async listShipModelOrientations(
+    projectPath: string,
+    modelFolder: string,
+    manifestPath: string
+  ): Promise<ShipModelOrientationCatalog> {
     if (isTauriRuntime()) {
       return invoke<ShipModelOrientationCatalog>("list_ship_model_orientations", {
-        projectPath
+        request: { projectPath, modelFolder, manifestPath }
       });
     }
 
     return {
       manifestPath: "Desktop runtime required",
+      modelFolder,
       models: []
     };
   },
 
   async saveShipModelOrientation(
     projectPath: string,
+    modelFolder: string,
+    manifestPath: string,
     modelPath: string,
     transform: ShipModelTransform
   ): Promise<ShipModelOrientationCatalog> {
     if (isTauriRuntime()) {
       return invoke<ShipModelOrientationCatalog>("save_ship_model_orientation", {
-        update: { projectPath, modelPath, transform }
+        update: { projectPath, modelFolder, manifestPath, modelPath, transform }
       });
     }
 
     return {
       manifestPath: "Desktop runtime required",
+      modelFolder,
       models: []
     };
   },
 
-  async loadShipModelPreview(projectPath: string, modelPath: string): Promise<ArrayBuffer> {
+  async loadShipModelPreview(
+    projectPath: string,
+    modelFolder: string,
+    modelPath: string
+  ): Promise<ArrayBuffer> {
     if (isTauriRuntime()) {
       const bytes = await invoke<number[]>("load_ship_model_preview", {
-        request: { projectPath, modelPath }
+        request: { projectPath, modelFolder, modelPath }
+      });
+      return new Uint8Array(bytes).buffer;
+    }
+
+    throw new Error("3D preview is available in the desktop runtime.");
+  },
+
+  async loadAbsoluteModelPreview(projectPath: string, absolutePath: string): Promise<ArrayBuffer> {
+    if (isTauriRuntime()) {
+      const bytes = await invoke<number[]>("load_absolute_model_preview", {
+        request: { projectPath, absolutePath }
       });
       return new Uint8Array(bytes).buffer;
     }
@@ -375,6 +499,152 @@ const projectApi = {
     }
 
     return { stagingFolder, outputs: [] };
+  },
+
+  async scanModelAssets(projectPath: string, sourceFolder: string): Promise<ModelScanResult> {
+    if (isTauriRuntime()) {
+      return invoke<ModelScanResult>("scan_model_assets", {
+        request: { projectPath, sourceFolder }
+      });
+    }
+
+    return { sourceFolder, assets: [] };
+  },
+
+  async optimizeModelAssets(request: {
+    projectPath: string;
+    sourceFolder: string;
+    stagingFolder: string;
+    manifestPath: string;
+    compression: string;
+    textureCompress: string;
+    simplify: boolean;
+    targetTriangles: number;
+    force: boolean;
+  }): Promise<ModelOptimizeResult> {
+    if (isTauriRuntime()) {
+      return invoke<ModelOptimizeResult>("optimize_model_assets", {
+        request
+      });
+    }
+
+    return { stagingFolder: request.stagingFolder, manifestPath: request.manifestPath, outputs: [] };
+  },
+
+  async listSourceImageOrientations(
+    projectPath: string,
+    sourceFolder: string,
+    manifestPath: string
+  ): Promise<SourceImageOrientationCatalog> {
+    if (isTauriRuntime()) {
+      return invoke<SourceImageOrientationCatalog>("list_source_image_orientations", {
+        request: { projectPath, sourceFolder, manifestPath }
+      });
+    }
+
+    return { sourceFolder, manifestPath, assets: [] };
+  },
+
+  async saveSourceImageOrientation(request: {
+    projectPath: string;
+    sourceFolder: string;
+    manifestPath: string;
+    relativePath: string;
+    transform: SourceImageTransform;
+    assetRole: string;
+    notes: string;
+  }): Promise<SourceImageOrientationCatalog> {
+    if (isTauriRuntime()) {
+      return invoke<SourceImageOrientationCatalog>("save_source_image_orientation", {
+        update: request
+      });
+    }
+
+    return {
+      sourceFolder: request.sourceFolder,
+      manifestPath: request.manifestPath,
+      assets: []
+    };
+  },
+
+  async loadSourceImagePreview(absolutePath: string): Promise<ArrayBuffer> {
+    if (isTauriRuntime()) {
+      const bytes = await invoke<number[]>("load_source_image_preview", {
+        request: { absolutePath }
+      });
+      return new Uint8Array(bytes).buffer;
+    }
+
+    throw new Error("Source image preview is available in the desktop runtime.");
+  },
+
+  async getMachineConfig(): Promise<MachineConfigReadout> {
+    if (isTauriRuntime()) {
+      return invoke<MachineConfigReadout>("get_machine_config");
+    }
+
+    return {
+      path: "Desktop runtime required",
+      config: {
+        schemaVersion: "0.1.0",
+        computerName: "browser-preview",
+        updatedAt: new Date().toISOString(),
+        tools: [],
+        audit: []
+      }
+    };
+  },
+
+  async saveMachineConfig(config: MachineConfig): Promise<MachineConfigReadout> {
+    if (isTauriRuntime()) {
+      return invoke<MachineConfigReadout>("save_machine_config", { config });
+    }
+
+    return { path: "Desktop runtime required", config };
+  },
+
+  async pickPath(
+    kind: "file" | "folder",
+    title: string,
+    initialPath: string
+  ): Promise<string | null> {
+    if (isTauriRuntime()) {
+      return invoke<string | null>("pick_path", {
+        request: { kind, title, initialPath }
+      });
+    }
+
+    return null;
+  },
+
+  async runTrellisBatchConversion(request: {
+    projectPath: string;
+    sourceFolder: string;
+    finalOutputFolder: string;
+    workflowPath: string;
+    comfyUrl: string;
+    comfyOutputFolder: string;
+    stagingFolder: string;
+    orientationCsv: string;
+    outputSuffix: string;
+    limit: number;
+    targetFaceCount: number;
+    textureSize: number;
+    force: boolean;
+    dryRun: boolean;
+  }): Promise<TrellisBatchResult> {
+    if (isTauriRuntime()) {
+      return invoke<TrellisBatchResult>("run_trellis_batch_conversion", {
+        request
+      });
+    }
+
+    return {
+      command: "Desktop runtime required",
+      status: 0,
+      stdout: "",
+      stderr: ""
+    };
   }
 };
 
@@ -403,6 +673,51 @@ function formatBytes(value: number) {
   return `${amount.toFixed(unitIndex === 0 ? 0 : 1)} ${units[unitIndex]}`;
 }
 
+function PathField({
+  label,
+  value,
+  kind,
+  placeholder,
+  onChange
+}: {
+  label: string;
+  value: string;
+  kind: "file" | "folder";
+  placeholder?: string;
+  onChange: (value: string) => void;
+}) {
+  async function browse() {
+    const fallback = window.localStorage.getItem(lastPathPickerFolderKey) ?? "";
+    const selected = await projectApi.pickPath(kind, label, value || fallback);
+    if (selected) {
+      onChange(selected);
+      const separator = selected.includes("\\") ? "\\" : "/";
+      const folder = kind === "folder" ? selected : selected.split(separator).slice(0, -1).join(separator);
+      if (folder) {
+        window.localStorage.setItem(lastPathPickerFolderKey, folder);
+      }
+    }
+  }
+
+  return (
+    <label>
+      {label}
+      <div className="path-picker-row">
+        <input value={value} placeholder={placeholder} onChange={(event) => onChange(event.target.value)} />
+        <button
+          type="button"
+          className="path-picker-button"
+          aria-label={`Browse ${label}`}
+          title={`Browse ${label}`}
+          onClick={() => void browse()}
+        >
+          📁
+        </button>
+      </div>
+    </label>
+  );
+}
+
 async function closeApp() {
   if (isTauriRuntime()) {
     await invoke("close_app");
@@ -418,6 +733,7 @@ function App() {
   const [activeTool, setActiveTool] = useState<ActiveTool>(null);
   const [isCreateOpen, setIsCreateOpen] = useState(false);
   const [isProjectEditorOpen, setIsProjectEditorOpen] = useState(false);
+  const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [isBusy, setIsBusy] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [projectName, setProjectName] = useState("");
@@ -594,7 +910,7 @@ function App() {
               className="rail-action-button"
               aria-label="Settings"
               title="Settings"
-              onClick={() => setError("Settings are not implemented yet.")}
+              onClick={() => setIsSettingsOpen(true)}
             >
               ⚙
             </button>
@@ -661,15 +977,24 @@ function App() {
                         ? "steam-launch-prep"
                         : event.target.value === "model-orientation"
                           ? "model-orientation"
+                          : event.target.value === "model-optimization"
+                            ? "model-optimization"
+                          : event.target.value === "source-image-orientation"
+                            ? "source-image-orientation"
                           : event.target.value === "image-optimization"
                             ? "image-optimization"
-                          : null
+                            : event.target.value === "trellis-batch"
+                              ? "trellis-batch"
+                              : null
                     )
                   }
                 >
                   <option value="">Tools</option>
                   <option value="model-orientation">Model Orientation</option>
+                  <option value="model-optimization">Model Optimization</option>
+                  <option value="source-image-orientation">Source Image Orientation</option>
                   <option value="image-optimization">Image Optimization</option>
+                  <option value="trellis-batch">Trellis Batch</option>
                   <option value="steam-launch-prep">Steam Launch Prep</option>
                 </select>
               </div>
@@ -681,8 +1006,14 @@ function App() {
                   <SteamLaunchPrep project={activeProject.project} />
                 ) : activeTool === "model-orientation" ? (
                   <ModelOrientationTool project={activeProject.project} />
+                ) : activeTool === "model-optimization" ? (
+                  <ModelOptimizationTool project={activeProject.project} />
+                ) : activeTool === "source-image-orientation" ? (
+                  <SourceImageOrientationTool project={activeProject.project} />
                 ) : activeTool === "image-optimization" ? (
                   <ImageOptimizationTool project={activeProject.project} />
+                ) : activeTool === "trellis-batch" ? (
+                  <TrellisBatchTool project={activeProject.project} />
                 ) : (
                   <div className="tool-empty">
                     <h3>Tools</h3>
@@ -819,14 +1150,13 @@ function App() {
                       onChange={(event) => setGithubRepositoryUrl(event.target.value)}
                     />
                   </label>
-                  <label>
-                    Local folder on this machine
-                    <input
-                      value={localFolder}
-                      placeholder="C:\Projects\ExternalGame"
-                      onChange={(event) => setLocalFolder(event.target.value)}
-                    />
-                  </label>
+                  <PathField
+                    label="Local folder on this machine"
+                    value={localFolder}
+                    kind="folder"
+                    placeholder="C:\Projects\ExternalGame"
+                    onChange={setLocalFolder}
+                  />
                   <div className="button-row">
                     <button type="submit" className="primary" disabled={isBusy}>
                       Save Links
@@ -878,6 +1208,8 @@ function App() {
           </section>
         </div>
       ) : null}
+
+      {isSettingsOpen ? <SettingsModal onClose={() => setIsSettingsOpen(false)} /> : null}
     </main>
   );
 }
@@ -918,6 +1250,691 @@ function SteamLaunchPrep({ project }: { project: ProjectSummary }) {
           />
         </label>
       </div>
+    </div>
+  );
+}
+
+function SettingsModal({ onClose }: { onClose: () => void }) {
+  const [readout, setReadout] = useState<MachineConfigReadout | null>(null);
+  const [status, setStatus] = useState("");
+  const [isBusy, setIsBusy] = useState(false);
+
+  useEffect(() => {
+    projectApi
+      .getMachineConfig()
+      .then(setReadout)
+      .catch((caught: unknown) =>
+        setStatus(caught instanceof Error ? caught.message : String(caught))
+      );
+  }, []);
+
+  function updateTool(index: number, patch: Partial<MachineToolConfig>) {
+    setReadout((current) => {
+      if (!current) return current;
+      const tools = current.config.tools.map((tool, toolIndex) =>
+        toolIndex === index ? { ...tool, ...patch } : tool
+      );
+      return { ...current, config: { ...current.config, tools } };
+    });
+  }
+
+  function addTool() {
+    setReadout((current) => {
+      if (!current) return current;
+      const nextIndex = current.config.tools.length + 1;
+      return {
+        ...current,
+        config: {
+          ...current.config,
+          tools: [
+            ...current.config.tools,
+            {
+              id: `tool-${nextIndex}`,
+              label: "New Tool",
+              kind: "cli",
+              executablePath: "",
+              url: "",
+              workingDirectory: "",
+              notes: "",
+              enabled: true
+            }
+          ]
+        }
+      };
+    });
+  }
+
+  async function saveConfig() {
+    if (!readout) return;
+    setIsBusy(true);
+    setStatus("");
+    try {
+      const next = await projectApi.saveMachineConfig(readout.config);
+      setReadout(next);
+      setStatus("Saved this computer config.");
+    } catch (caught) {
+      setStatus(caught instanceof Error ? caught.message : String(caught));
+    } finally {
+      setIsBusy(false);
+    }
+  }
+
+  return (
+    <div className="modal-backdrop" role="presentation" onMouseDown={onClose}>
+      <section
+        className="modal project-editor-modal settings-modal"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="settings-title"
+        onMouseDown={(event) => event.stopPropagation()}
+      >
+        <header className="modal-header">
+          <div>
+            <p className="eyebrow">Settings</p>
+            <h2 id="settings-title">This Computer</h2>
+            <p className="path-line">{readout?.path ?? "Loading machine config..."}</p>
+          </div>
+          <button type="button" className="icon-button subtle" onClick={onClose}>
+            x
+          </button>
+        </header>
+
+        {readout ? (
+          <>
+            <div className="scan-summary">
+              <div>
+                <dt>Computer</dt>
+                <dd>{readout.config.computerName}</dd>
+              </div>
+              <div>
+                <dt>Configured tools</dt>
+                <dd>{readout.config.tools.length}</dd>
+              </div>
+              <div>
+                <dt>Updated</dt>
+                <dd>{readout.config.updatedAt}</dd>
+              </div>
+            </div>
+
+            <div className="tool-config-list">
+              {readout.config.tools.map((tool, index) => (
+                <section className="tool-config-card" key={`${tool.id}-${index}`}>
+                  <div className="tool-config-header">
+                    <label className="check-row">
+                      <input
+                        type="checkbox"
+                        checked={tool.enabled}
+                        onChange={(event) => updateTool(index, { enabled: event.target.checked })}
+                      />
+                      Enabled
+                    </label>
+                    <span>{tool.kind || "tool"}</span>
+                  </div>
+                  <div className="image-config-grid">
+                    <label>
+                      ID
+                      <input
+                        value={tool.id}
+                        onChange={(event) => updateTool(index, { id: event.target.value })}
+                      />
+                    </label>
+                    <label>
+                      Label
+                      <input
+                        value={tool.label}
+                        onChange={(event) => updateTool(index, { label: event.target.value })}
+                      />
+                    </label>
+                    <label>
+                      Kind
+                      <input
+                        value={tool.kind}
+                        placeholder="cli, desktop-app, http-service"
+                        onChange={(event) => updateTool(index, { kind: event.target.value })}
+                      />
+                    </label>
+                    <PathField
+                      label="Executable path"
+                      value={tool.executablePath}
+                      kind="file"
+                      onChange={(value) => updateTool(index, { executablePath: value })}
+                    />
+                    <label>
+                      URL
+                      <input
+                        value={tool.url}
+                        onChange={(event) => updateTool(index, { url: event.target.value })}
+                      />
+                    </label>
+                    <PathField
+                      label="Working directory"
+                      value={tool.workingDirectory}
+                      kind="folder"
+                      onChange={(value) => updateTool(index, { workingDirectory: value })}
+                    />
+                  </div>
+                  <label className="wide-label">
+                    Notes
+                    <textarea
+                      rows={2}
+                      value={tool.notes}
+                      onChange={(event) => updateTool(index, { notes: event.target.value })}
+                    />
+                  </label>
+                </section>
+              ))}
+            </div>
+
+            <div className="button-row">
+              <button type="button" onClick={addTool}>
+                Add Tool
+              </button>
+              <button type="button" className="primary" disabled={isBusy} onClick={() => void saveConfig()}>
+                Save Config
+              </button>
+            </div>
+          </>
+        ) : null}
+
+        {status ? <p className="tool-status">{status}</p> : null}
+      </section>
+    </div>
+  );
+}
+
+function SourceImageOrientationTool({ project }: { project: ProjectSummary }) {
+  const [sourceFolder, setSourceFolder] = useState(
+    "G:\\My Drive\\3D Files\\source_images\\Small Craft"
+  );
+  const [manifestPath, setManifestPath] = useState(
+    "refs\\assetForge\\small-craft-source-orientation.manifest.json"
+  );
+  const [catalog, setCatalog] = useState<SourceImageOrientationCatalog | null>(null);
+  const [selectedPath, setSelectedPath] = useState("");
+  const [draft, setDraft] = useState<SourceImageTransform>({
+    rotateDegrees: 0,
+    flipHorizontal: false,
+    flipVertical: false
+  });
+  const [assetRole, setAssetRole] = useState("");
+  const [notes, setNotes] = useState("");
+  const [previewUrl, setPreviewUrl] = useState("");
+  const [status, setStatus] = useState("");
+  const [isBusy, setIsBusy] = useState(false);
+
+  async function loadCatalog() {
+    setIsBusy(true);
+    setStatus("");
+    try {
+      const next = await projectApi.listSourceImageOrientations(
+        project.path,
+        sourceFolder,
+        manifestPath
+      );
+      setCatalog(next);
+      const first = next.assets[0];
+      if (first) {
+        selectAsset(first);
+      }
+      setStatus(`Loaded ${next.assets.length} source images.`);
+    } catch (caught) {
+      setStatus(caught instanceof Error ? caught.message : String(caught));
+    } finally {
+      setIsBusy(false);
+    }
+  }
+
+  useEffect(() => {
+    return () => {
+      if (previewUrl) URL.revokeObjectURL(previewUrl);
+    };
+  }, [previewUrl]);
+
+  function selectAsset(asset: SourceImageOrientationEntry) {
+    setSelectedPath(asset.relativePath);
+    setDraft(asset.transform);
+    setAssetRole(asset.assetRole ?? "");
+    setNotes(asset.notes ?? "");
+    setStatus("");
+    projectApi
+      .loadSourceImagePreview(asset.absolutePath)
+      .then((buffer) => {
+        const url = URL.createObjectURL(new Blob([buffer]));
+        setPreviewUrl((current) => {
+          if (current) URL.revokeObjectURL(current);
+          return url;
+        });
+      })
+      .catch((caught: unknown) =>
+        setStatus(caught instanceof Error ? caught.message : String(caught))
+      );
+  }
+
+  function rotate(delta: number) {
+    setDraft((current) => ({ ...current, rotateDegrees: current.rotateDegrees + delta }));
+  }
+
+  async function saveDraft(selectNext: boolean) {
+    if (!selectedPath) return;
+    setIsBusy(true);
+    setStatus("");
+    try {
+      const next = await projectApi.saveSourceImageOrientation({
+        projectPath: project.path,
+        sourceFolder,
+        manifestPath,
+        relativePath: selectedPath,
+        transform: draft,
+        assetRole,
+        notes
+      });
+      setCatalog(next);
+      const savedIndex = next.assets.findIndex((asset) => asset.relativePath === selectedPath);
+      const nextAsset = selectNext ? next.assets[savedIndex + 1] : next.assets[savedIndex];
+      if (nextAsset) {
+        selectAsset(nextAsset);
+      }
+      setStatus(`Saved ${selectedPath}`);
+    } catch (caught) {
+      setStatus(caught instanceof Error ? caught.message : String(caught));
+    } finally {
+      setIsBusy(false);
+    }
+  }
+
+  const selected = catalog?.assets.find((asset) => asset.relativePath === selectedPath) ?? null;
+
+  return (
+    <div className="source-orientation-tool">
+      <div className="section-heading">
+        <h3>Source Image Orientation</h3>
+        <span>{catalog ? `${catalog.assets.length} images` : "handoff manifest"}</span>
+      </div>
+
+      <p className="tool-note">
+        Mark source token orientation once, then reuse the JSON handoff manifest for 2D runtime
+        tokens, Trellis conversion, and coding-agent implementation work.
+      </p>
+
+      <div className="image-config-grid">
+        <PathField
+          label="Source folder"
+          value={sourceFolder}
+          kind="folder"
+          onChange={setSourceFolder}
+        />
+        <PathField
+          label="Handoff manifest"
+          value={manifestPath}
+          kind="file"
+          onChange={setManifestPath}
+        />
+      </div>
+
+      <div className="button-row">
+        <button type="button" disabled={isBusy} onClick={() => void loadCatalog()}>
+          Load Source Images
+        </button>
+      </div>
+
+      <div className="source-orientation-layout">
+        <div className="model-list">
+          {catalog?.assets.map((asset) => (
+            <button
+              key={asset.relativePath}
+              type="button"
+              className={asset.relativePath === selectedPath ? "model-row active" : "model-row"}
+              onClick={() => selectAsset(asset)}
+            >
+              <strong>{asset.fileName}</strong>
+              <span>{asset.relativePath}</span>
+            </button>
+          ))}
+        </div>
+
+        <section className="orientation-editor">
+          {selected ? (
+            <>
+              <div>
+                <p className="eyebrow">Selected Image</p>
+                <h3>{selected.fileName}</h3>
+                <p className="path-line">{selected.absolutePath}</p>
+              </div>
+
+              <div className="source-preview">
+                <div className="expected-forward">Expected forward</div>
+                {previewUrl ? (
+                  <img
+                    src={previewUrl}
+                    alt=""
+                    style={{
+                      transform: `translate(-50%, -50%) rotate(${draft.rotateDegrees}deg) scale(${draft.flipHorizontal ? -1 : 1}, ${
+                        draft.flipVertical ? -1 : 1
+                      })`
+                    }}
+                  />
+                ) : null}
+              </div>
+
+              <div className="orientation-controls">
+                <label>
+                  Rotate degrees
+                  <input
+                    type="number"
+                    step="1"
+                    value={draft.rotateDegrees}
+                    onChange={(event) =>
+                      setDraft((current) => ({
+                        ...current,
+                        rotateDegrees: Number(event.target.value) || 0
+                      }))
+                    }
+                  />
+                </label>
+                <label className="check-row">
+                  <input
+                    type="checkbox"
+                    checked={draft.flipHorizontal}
+                    onChange={(event) =>
+                      setDraft((current) => ({
+                        ...current,
+                        flipHorizontal: event.target.checked
+                      }))
+                    }
+                  />
+                  Flip horizontal
+                </label>
+                <label className="check-row">
+                  <input
+                    type="checkbox"
+                    checked={draft.flipVertical}
+                    onChange={(event) =>
+                      setDraft((current) => ({
+                        ...current,
+                        flipVertical: event.target.checked
+                      }))
+                    }
+                  />
+                  Flip vertical
+                </label>
+                <label>
+                  Asset role
+                  <input
+                    value={assetRole}
+                    placeholder="Optional category for this asset"
+                    onChange={(event) => setAssetRole(event.target.value)}
+                  />
+                </label>
+              </div>
+
+              <div className="orientation-quick-controls">
+                <button type="button" onClick={() => rotate(-45)}>
+                  -45
+                </button>
+                <button type="button" onClick={() => rotate(-15)}>
+                  -15
+                </button>
+                <button type="button" onClick={() => rotate(15)}>
+                  +15
+                </button>
+                <button type="button" onClick={() => rotate(45)}>
+                  +45
+                </button>
+                <button type="button" onClick={() => setDraft(SourceImageTransformDefault)}>
+                  Reset
+                </button>
+              </div>
+
+              <label className="wide-label">
+                Handoff notes
+                <textarea rows={3} value={notes} onChange={(event) => setNotes(event.target.value)} />
+              </label>
+
+              <div className="button-row">
+                <button type="button" className="primary" disabled={isBusy} onClick={() => void saveDraft(false)}>
+                  Save Orientation
+                </button>
+                <button type="button" disabled={isBusy} onClick={() => void saveDraft(true)}>
+                  Save And Next
+                </button>
+              </div>
+
+              <div className="manifest-readout">
+                <dt>Manifest</dt>
+                <dd>{catalog?.manifestPath ?? manifestPath}</dd>
+              </div>
+            </>
+          ) : (
+            <p className="empty-state">Load source images and select an asset.</p>
+          )}
+        </section>
+      </div>
+
+      {status ? <p className="tool-status">{status}</p> : null}
+    </div>
+  );
+}
+
+const SourceImageTransformDefault: SourceImageTransform = {
+  rotateDegrees: 0,
+  flipHorizontal: false,
+  flipVertical: false
+};
+
+function TrellisBatchTool({ project }: { project: ProjectSummary }) {
+  const [sourceFolder, setSourceFolder] = useState(
+    "G:\\My Drive\\3D Files\\source_images\\Small Craft"
+  );
+  const [finalOutputFolder, setFinalOutputFolder] = useState(
+    "D:\\Apps\\Black-Ledger-Orbit\\assets\\models\\small-craft"
+  );
+  const [workflowPath, setWorkflowPath] = useState(
+    "D:\\StableDiffusion\\Workflows\\geometry_texture.json"
+  );
+  const [comfyUrl, setComfyUrl] = useState("http://127.0.0.1:8000");
+  const [comfyOutputFolder, setComfyOutputFolder] = useState(
+    "C:\\Users\\sloth\\Documents\\ComfyUI\\output"
+  );
+  const [stagingFolder, setStagingFolder] = useState("");
+  const [orientationCsv, setOrientationCsv] = useState(
+    "refs\\assetForge\\small-craft-source-orientation.manifest.json"
+  );
+  const [outputSuffix, setOutputSuffix] = useState("raw");
+  const [limit, setLimit] = useState(0);
+  const [targetFaceCount, setTargetFaceCount] = useState(500000);
+  const [textureSize, setTextureSize] = useState(2048);
+  const [force, setForce] = useState(false);
+  const [scan, setScan] = useState<ImageScanResult | null>(null);
+  const [result, setResult] = useState<TrellisBatchResult | null>(null);
+  const [status, setStatus] = useState("");
+  const [isBusy, setIsBusy] = useState(false);
+
+  async function runSourceScan() {
+    setIsBusy(true);
+    setStatus("");
+    setResult(null);
+    try {
+      const next = await projectApi.scanImageAssets(project.path, sourceFolder);
+      setScan(next);
+      setStatus(`Scanned ${next.assets.length} source images.`);
+    } catch (caught) {
+      setStatus(caught instanceof Error ? caught.message : String(caught));
+    } finally {
+      setIsBusy(false);
+    }
+  }
+
+  async function runBatch(dryRun: boolean) {
+    setIsBusy(true);
+    setStatus(dryRun ? "Checking batch inputs..." : "Running Trellis batch conversion...");
+    try {
+      const next = await projectApi.runTrellisBatchConversion({
+        projectPath: project.path,
+        sourceFolder,
+        finalOutputFolder,
+        workflowPath,
+        comfyUrl,
+        comfyOutputFolder,
+        stagingFolder,
+        orientationCsv,
+        outputSuffix,
+        limit,
+        targetFaceCount,
+        textureSize,
+        force,
+        dryRun
+      });
+      setResult(next);
+      setStatus(dryRun ? "Dry run complete." : "Trellis batch complete.");
+    } catch (caught) {
+      setStatus(caught instanceof Error ? caught.message : String(caught));
+    } finally {
+      setIsBusy(false);
+    }
+  }
+
+  const totalBytes = scan?.assets.reduce((sum, asset) => sum + asset.fileSizeBytes, 0) ?? 0;
+
+  return (
+    <div className="trellis-tool">
+      <div className="section-heading">
+        <h3>Trellis Batch</h3>
+        <span>{scan ? `${scan.assets.length} source images` : "ComfyUI"}</span>
+      </div>
+
+      <p className="tool-note">
+        Convert source PNGs into GLB models with the Trellis Comfy workflow. Use dry run before
+        launching a real conversion job.
+      </p>
+
+      <div className="image-config-grid">
+        <PathField
+          label="Source image folder"
+          value={sourceFolder}
+          kind="folder"
+          onChange={setSourceFolder}
+        />
+        <PathField
+          label="GLB output folder"
+          value={finalOutputFolder}
+          kind="folder"
+          onChange={setFinalOutputFolder}
+        />
+        <PathField
+          label="Orientation manifest"
+          value={orientationCsv}
+          kind="file"
+          onChange={setOrientationCsv}
+        />
+        <PathField
+          label="Workflow JSON"
+          value={workflowPath}
+          kind="file"
+          onChange={setWorkflowPath}
+        />
+        <label>
+          Comfy URL
+          <input value={comfyUrl} onChange={(event) => setComfyUrl(event.target.value)} />
+        </label>
+        <PathField
+          label="Comfy output folder"
+          value={comfyOutputFolder}
+          kind="folder"
+          onChange={setComfyOutputFolder}
+        />
+        <PathField
+          label="Oriented-input staging"
+          value={stagingFolder}
+          kind="folder"
+          placeholder="blank uses output\\_oriented-input"
+          onChange={setStagingFolder}
+        />
+        <label>
+          Output suffix
+          <input value={outputSuffix} onChange={(event) => setOutputSuffix(event.target.value)} />
+        </label>
+        <label>
+          Limit
+          <input
+            type="number"
+            min="0"
+            value={limit}
+            onChange={(event) => setLimit(Number(event.target.value) || 0)}
+          />
+        </label>
+        <label>
+          Target faces
+          <input
+            type="number"
+            min="1000"
+            step="1000"
+            value={targetFaceCount}
+            onChange={(event) => setTargetFaceCount(Number(event.target.value) || 500000)}
+          />
+        </label>
+        <label>
+          Texture size
+          <input
+            type="number"
+            min="256"
+            max="4096"
+            step="256"
+            value={textureSize}
+            onChange={(event) => setTextureSize(Number(event.target.value) || 2048)}
+          />
+        </label>
+        <label className="check-row">
+          <input type="checkbox" checked={force} onChange={(event) => setForce(event.target.checked)} />
+          Regenerate existing GLBs
+        </label>
+      </div>
+
+      <div className="button-row">
+        <button type="button" disabled={isBusy} onClick={() => void runSourceScan()}>
+          Scan Sources
+        </button>
+        <button type="button" disabled={isBusy} onClick={() => void runBatch(true)}>
+          Dry Run
+        </button>
+        <button
+          type="button"
+          className="primary"
+          disabled={isBusy}
+          onClick={() => void runBatch(false)}
+        >
+          Run Conversion
+        </button>
+      </div>
+
+      {scan ? (
+        <div className="scan-summary">
+          <div>
+            <dt>Source images</dt>
+            <dd>{scan.assets.length}</dd>
+          </div>
+          <div>
+            <dt>Total source size</dt>
+            <dd>{formatBytes(totalBytes)}</dd>
+          </div>
+          <div>
+            <dt>Source path</dt>
+            <dd>{scan.sourceFolder}</dd>
+          </div>
+        </div>
+      ) : null}
+
+      {scan ? <ImageAssetTable assets={scan.assets} /> : null}
+
+      {result ? (
+        <pre className="sync-output">
+          <strong>{result.command}</strong>
+          {"\n\n"}
+          {result.stdout}
+          {result.stderr ? `\n${result.stderr}` : ""}
+        </pre>
+      ) : null}
+
+      {status ? <p className="tool-status">{status}</p> : null}
     </div>
   );
 }
@@ -989,22 +2006,20 @@ function ImageOptimizationTool({ project }: { project: ProjectSummary }) {
       </p>
 
       <div className="image-config-grid">
-        <label>
-          Source folder
-          <input
-            value={sourceFolder}
-            placeholder="assets/textures or D:\Projects\Game\assets\textures"
-            onChange={(event) => setSourceFolder(event.target.value)}
-          />
-        </label>
-        <label>
-          Staging folder
-          <input
-            value={stagingFolder}
-            placeholder="tmp/asset-forge-optimized-textures"
-            onChange={(event) => setStagingFolder(event.target.value)}
-          />
-        </label>
+        <PathField
+          label="Source folder"
+          value={sourceFolder}
+          kind="folder"
+          placeholder="assets/textures or D:\Projects\Game\assets\textures"
+          onChange={setSourceFolder}
+        />
+        <PathField
+          label="Staging folder"
+          value={stagingFolder}
+          kind="folder"
+          placeholder="tmp/asset-forge-optimized-textures"
+          onChange={setStagingFolder}
+        />
         <label>
           Type preset
           <select defaultValue="runtime-pbr">
@@ -1131,7 +2146,472 @@ function ImageAssetTable({ assets }: { assets: ImageAssetEntry[] }) {
   );
 }
 
+function ModelOptimizationTool({ project }: { project: ProjectSummary }) {
+  const [sourceFolder, setSourceFolder] = useState("assets\\models\\small-craft");
+  const [stagingFolder, setStagingFolder] = useState("tmp\\asset-forge-optimized-models");
+  const [manifestPath, setManifestPath] = useState(
+    "refs\\assetForge\\model-optimization.manifest.json"
+  );
+  const [compression, setCompression] = useState("meshopt");
+  const [textureCompress, setTextureCompress] = useState("webp");
+  const [simplify, setSimplify] = useState(true);
+  const [targetTriangles, setTargetTriangles] = useState(25000);
+  const [force, setForce] = useState(false);
+  const [scan, setScan] = useState<ModelScanResult | null>(null);
+  const [result, setResult] = useState<ModelOptimizeResult | null>(null);
+  const [reviewPair, setReviewPair] = useState<ModelOptimizeEntry | null>(null);
+  const [status, setStatus] = useState("");
+  const [isBusy, setIsBusy] = useState(false);
+
+  const totalBytes = scan?.assets.reduce((sum, asset) => sum + asset.fileSizeBytes, 0) ?? 0;
+  const opportunityCount =
+    scan?.assets.reduce((sum, asset) => sum + asset.opportunities.length, 0) ?? 0;
+  const outputBytes = result?.outputs.reduce((sum, output) => sum + output.outputSizeBytes, 0) ?? 0;
+  const sourceBytes =
+    result?.outputs.reduce((sum, output) => sum + output.sourceSizeBytes, 0) ?? 0;
+
+  async function runScan() {
+    setIsBusy(true);
+    setStatus("");
+    setResult(null);
+    try {
+      const next = await projectApi.scanModelAssets(project.path, sourceFolder);
+      setScan(next);
+      setStatus(`Scanned ${next.assets.length} GLB model assets.`);
+    } catch (caught) {
+      setStatus(caught instanceof Error ? caught.message : String(caught));
+    } finally {
+      setIsBusy(false);
+    }
+  }
+
+  async function runOptimize() {
+    setIsBusy(true);
+    setStatus("Optimizing model assets to staging...");
+    try {
+      const next = await projectApi.optimizeModelAssets({
+        projectPath: project.path,
+        sourceFolder,
+        stagingFolder,
+        manifestPath,
+        compression,
+        textureCompress,
+        simplify,
+        targetTriangles,
+        force
+      });
+      setResult(next);
+      setStatus(`Wrote ${next.outputs.length} staged model assets.`);
+    } catch (caught) {
+      setStatus(caught instanceof Error ? caught.message : String(caught));
+    } finally {
+      setIsBusy(false);
+    }
+  }
+
+  return (
+    <div className="model-optimization-tool">
+      <div className="section-heading">
+        <h3>Model Optimization</h3>
+        <span>{scan ? `${scan.assets.length} GLB models` : "runtime staging"}</span>
+      </div>
+
+      <p className="tool-note">
+        Scan GLB models and write optimized copies to a staging folder. Source files are not
+        modified. The current backend uses glTF Transform through npx.
+      </p>
+
+      <div className="image-config-grid">
+        <PathField
+          label="Source model folder"
+          value={sourceFolder}
+          kind="folder"
+          onChange={setSourceFolder}
+        />
+        <PathField
+          label="Staging folder"
+          value={stagingFolder}
+          kind="folder"
+          onChange={setStagingFolder}
+        />
+        <PathField
+          label="Optimization manifest"
+          value={manifestPath}
+          kind="file"
+          onChange={setManifestPath}
+        />
+        <label>
+          Geometry compression
+          <select value={compression} onChange={(event) => setCompression(event.target.value)}>
+            <option value="meshopt">Meshopt</option>
+            <option value="draco">Draco</option>
+            <option value="quantize">Quantize</option>
+            <option value="none">None</option>
+          </select>
+        </label>
+        <label>
+          Texture compression
+          <select
+            value={textureCompress}
+            onChange={(event) => setTextureCompress(event.target.value)}
+          >
+            <option value="webp">WebP</option>
+            <option value="ktx2">KTX2</option>
+            <option value="auto">Auto</option>
+            <option value="none">None</option>
+          </select>
+        </label>
+        <label>
+          Target triangles
+          <input
+            type="number"
+            min="1000"
+            step="1000"
+            value={targetTriangles}
+            onChange={(event) => setTargetTriangles(Number(event.target.value) || 25000)}
+          />
+        </label>
+        <label className="check-row">
+          <input
+            type="checkbox"
+            checked={simplify}
+            onChange={(event) => setSimplify(event.target.checked)}
+          />
+          Simplify geometry
+        </label>
+        <label className="check-row">
+          <input type="checkbox" checked={force} onChange={(event) => setForce(event.target.checked)} />
+          Regenerate existing outputs
+        </label>
+      </div>
+
+      <div className="button-row">
+        <button type="button" className="primary" disabled={isBusy} onClick={() => void runScan()}>
+          Scan Models
+        </button>
+        <button
+          type="button"
+          disabled={isBusy || !scan || scan.assets.length === 0}
+          onClick={() => void runOptimize()}
+        >
+          Optimize To Staging
+        </button>
+      </div>
+
+      {scan ? (
+        <div className="scan-summary">
+          <div>
+            <dt>Total source size</dt>
+            <dd>{formatBytes(totalBytes)}</dd>
+          </div>
+          <div>
+            <dt>Optimization flags</dt>
+            <dd>{opportunityCount}</dd>
+          </div>
+          <div>
+            <dt>Source path</dt>
+            <dd>{scan.sourceFolder}</dd>
+          </div>
+        </div>
+      ) : null}
+
+      {result ? (
+        <div className="scan-summary">
+          <div>
+            <dt>Staged output</dt>
+            <dd>{result.stagingFolder}</dd>
+          </div>
+          <div>
+            <dt>Before</dt>
+            <dd>{formatBytes(sourceBytes)}</dd>
+          </div>
+          <div>
+            <dt>After</dt>
+            <dd>{formatBytes(outputBytes)}</dd>
+          </div>
+        </div>
+      ) : null}
+
+      {scan ? <ModelAssetTable assets={scan.assets} /> : null}
+      {result && result.outputs.length > 0 ? (
+        <ModelOptimizeOutputTable outputs={result.outputs} onReview={setReviewPair} />
+      ) : null}
+      {reviewPair ? (
+        <ModelReviewModal
+          project={project}
+          pair={reviewPair}
+          onClose={() => setReviewPair(null)}
+        />
+      ) : null}
+      {status ? <p className="tool-status">{status}</p> : null}
+    </div>
+  );
+}
+
+function ModelAssetTable({ assets }: { assets: ModelAssetEntry[] }) {
+  return (
+    <div className="asset-table-wrap">
+      <table className="asset-table">
+        <thead>
+          <tr>
+            <th>Model</th>
+            <th>Triangles</th>
+            <th>Weight</th>
+            <th>Opportunities</th>
+          </tr>
+        </thead>
+        <tbody>
+          {assets.map((asset) => (
+            <tr key={asset.absolutePath}>
+              <td>
+                <strong>{asset.fileName}</strong>
+                <span>{asset.relativePath}</span>
+              </td>
+              <td>{formatBytes(asset.fileSizeBytes)}</td>
+              <td>{asset.triangleCount > 0 ? asset.triangleCount.toLocaleString() : "unknown"}</td>
+              <td>{asset.opportunities.length > 0 ? asset.opportunities.join(", ") : "clean"}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+function ModelOptimizeOutputTable({
+  outputs,
+  onReview
+}: {
+  outputs: ModelOptimizeEntry[];
+  onReview: (output: ModelOptimizeEntry) => void;
+}) {
+  return (
+    <div className="asset-table-wrap">
+      <table className="asset-table">
+        <thead>
+          <tr>
+            <th>Optimized Model</th>
+            <th>Triangles</th>
+            <th>Size</th>
+            <th>Review</th>
+          </tr>
+        </thead>
+        <tbody>
+          {outputs.map((output) => (
+            <tr key={output.outputPath}>
+              <td>
+                <strong>{output.outputPath.split(/[\\/]/).pop()}</strong>
+                <span>{output.outputPath}</span>
+              </td>
+              <td>
+                {output.sourceTriangles > 0
+                  ? `${output.sourceTriangles.toLocaleString()} to ${output.targetTriangles.toLocaleString()}`
+                  : "unknown"}
+                <span>ratio {output.simplifyRatio.toFixed(3)}</span>
+              </td>
+              <td>
+                {formatBytes(output.sourceSizeBytes)} to {formatBytes(output.outputSizeBytes)}
+              </td>
+              <td>
+                <button type="button" onClick={() => onReview(output)}>
+                  Review
+                </button>
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+function ModelReviewModal({
+  project,
+  pair,
+  onClose
+}: {
+  project: ProjectSummary;
+  pair: ModelOptimizeEntry;
+  onClose: () => void;
+}) {
+  return (
+    <div className="modal-backdrop" role="presentation" onMouseDown={onClose}>
+      <section
+        className="modal model-review-modal"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="model-review-title"
+        onMouseDown={(event) => event.stopPropagation()}
+      >
+        <header className="modal-header">
+          <div>
+            <p className="eyebrow">Model Review</p>
+            <h2 id="model-review-title">Original / Optimized</h2>
+          </div>
+          <button type="button" className="icon-button subtle" onClick={onClose}>
+            x
+          </button>
+        </header>
+        <div className="model-review-grid">
+          <section>
+            <h3>Original</h3>
+            <AbsoluteModelPreview projectPath={project.path} absolutePath={pair.sourcePath} />
+          </section>
+          <section>
+            <h3>Optimized</h3>
+            <AbsoluteModelPreview projectPath={project.path} absolutePath={pair.outputPath} />
+          </section>
+        </div>
+      </section>
+    </div>
+  );
+}
+
+function AbsoluteModelPreview({
+  projectPath,
+  absolutePath
+}: {
+  projectPath: string;
+  absolutePath: string;
+}) {
+  const hostRef = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    const host = hostRef.current;
+    if (!host || !isTauriRuntime()) return;
+    const previewHost = host;
+    const width = Math.max(320, previewHost.clientWidth);
+    const height = 420;
+    const scene = new THREE.Scene();
+    scene.background = new THREE.Color(0x111817);
+    const camera = new THREE.PerspectiveCamera(38, width / height, 0.01, 1000);
+    const renderer = new THREE.WebGLRenderer({ antialias: true });
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+    renderer.setSize(width, height);
+    previewHost.innerHTML = "";
+    previewHost.appendChild(renderer.domElement);
+
+    const group = new THREE.Group();
+    scene.add(group);
+    scene.add(new THREE.AmbientLight(0xffffff, 1.8));
+    const key = new THREE.DirectionalLight(0xffffff, 2.2);
+    key.position.set(4, 5, 6);
+    scene.add(key);
+    scene.add(new THREE.GridHelper(8, 8, 0x55706a, 0x2f3e3a));
+
+    let disposed = false;
+    let yaw = THREE.MathUtils.degToRad(35);
+    let pitch = THREE.MathUtils.degToRad(24);
+    let distance = 6.6;
+    let loadedRoot: THREE.Object3D | null = null;
+    let drag: { x: number; y: number } | null = null;
+
+    function updateCamera() {
+      pitch = THREE.MathUtils.clamp(
+        pitch,
+        THREE.MathUtils.degToRad(-78),
+        THREE.MathUtils.degToRad(78)
+      );
+      camera.position.set(
+        Math.sin(yaw) * Math.cos(pitch) * distance,
+        Math.sin(pitch) * distance,
+        Math.cos(yaw) * Math.cos(pitch) * distance
+      );
+      camera.lookAt(0, 0, 0);
+    }
+
+    function handlePointerDown(event: PointerEvent) {
+      event.preventDefault();
+      previewHost.setPointerCapture(event.pointerId);
+      drag = { x: event.clientX, y: event.clientY };
+    }
+
+    function handlePointerMove(event: PointerEvent) {
+      if (!drag) return;
+      const dx = event.clientX - drag.x;
+      const dy = event.clientY - drag.y;
+      drag = { x: event.clientX, y: event.clientY };
+      yaw -= dx * 0.008;
+      pitch -= dy * 0.008;
+    }
+
+    function handlePointerUp(event: PointerEvent) {
+      drag = null;
+      if (previewHost.hasPointerCapture(event.pointerId)) {
+        previewHost.releasePointerCapture(event.pointerId);
+      }
+    }
+
+    function handleWheel(event: WheelEvent) {
+      event.preventDefault();
+      distance = THREE.MathUtils.clamp(distance + event.deltaY * 0.01, 1.2, 32);
+    }
+
+    previewHost.addEventListener("pointerdown", handlePointerDown);
+    previewHost.addEventListener("pointermove", handlePointerMove);
+    previewHost.addEventListener("pointerup", handlePointerUp);
+    previewHost.addEventListener("pointercancel", handlePointerUp);
+    previewHost.addEventListener("wheel", handleWheel, { passive: false });
+
+    const loader = new GLTFLoader();
+    loader.setMeshoptDecoder(MeshoptDecoder);
+    void projectApi
+      .loadAbsoluteModelPreview(projectPath, absolutePath)
+      .then((modelBytes) => {
+        if (disposed) return;
+        loader.parse(
+          modelBytes,
+          "",
+          (gltf) => {
+            if (disposed) return;
+            loadedRoot = gltf.scene;
+            group.add(loadedRoot);
+            normalizeObjectToView(loadedRoot);
+          },
+          (error) => {
+            if (!disposed) {
+              previewHost.innerHTML = `<div class="preview-error">Could not parse model preview: ${String(error)}</div>`;
+            }
+          }
+        );
+      })
+      .catch((caught: unknown) => {
+        if (!disposed) {
+          previewHost.innerHTML = `<div class="preview-error">Could not load model preview: ${
+            caught instanceof Error ? caught.message : String(caught)
+          }</div>`;
+        }
+      });
+
+    function animate() {
+      if (disposed) return;
+      updateCamera();
+      renderer.render(scene, camera);
+      window.requestAnimationFrame(animate);
+    }
+    animate();
+
+    return () => {
+      disposed = true;
+      previewHost.removeEventListener("pointerdown", handlePointerDown);
+      previewHost.removeEventListener("pointermove", handlePointerMove);
+      previewHost.removeEventListener("pointerup", handlePointerUp);
+      previewHost.removeEventListener("pointercancel", handlePointerUp);
+      previewHost.removeEventListener("wheel", handleWheel);
+      if (loadedRoot) group.remove(loadedRoot);
+      renderer.dispose();
+      previewHost.innerHTML = "";
+    };
+  }, [projectPath, absolutePath]);
+
+  return <div className="model-preview review-preview" ref={hostRef} />;
+}
+
 function ModelOrientationTool({ project }: { project: ProjectSummary }) {
+  const [modelFolder, setModelFolder] = useState("assets\\models\\ships");
+  const [manifestPath, setManifestPath] = useState(
+    "refs\\assetForge\\ship-model-orientation.manifest.json"
+  );
   const [catalog, setCatalog] = useState<ShipModelOrientationCatalog | null>(null);
   const [selectedPath, setSelectedPath] = useState("");
   const [draft, setDraft] = useState<ShipModelTransform>({
@@ -1145,7 +2625,7 @@ function ModelOrientationTool({ project }: { project: ProjectSummary }) {
 
   async function loadCatalog() {
     setStatus("");
-    const next = await projectApi.listShipModelOrientations(project.path);
+    const next = await projectApi.listShipModelOrientations(project.path, modelFolder, manifestPath);
     setCatalog(next);
     const first = next.models[0];
     if (first) {
@@ -1190,6 +2670,8 @@ function ModelOrientationTool({ project }: { project: ProjectSummary }) {
     try {
       const next = await projectApi.saveShipModelOrientation(
         project.path,
+        modelFolder,
+        manifestPath,
         selected.modelPath,
         draft
       );
@@ -1210,9 +2692,30 @@ function ModelOrientationTool({ project }: { project: ProjectSummary }) {
       </div>
 
       <p className="tool-note">
-        First slice: scan the linked game repo, save per-model yaw/pitch/roll/scale overrides,
-        then apply that manifest in runtime or batch tooling.
+        Scan a selected GLB folder, save per-model yaw/pitch/roll/scale overrides, then apply
+        that manifest in runtime or batch tooling.
       </p>
+
+      <div className="image-config-grid">
+        <PathField
+          label="Model folder"
+          value={modelFolder}
+          kind="folder"
+          onChange={setModelFolder}
+        />
+        <PathField
+          label="Orientation manifest"
+          value={manifestPath}
+          kind="file"
+          onChange={setManifestPath}
+        />
+      </div>
+
+      <div className="button-row">
+        <button type="button" onClick={() => void loadCatalog()}>
+          Load Models
+        </button>
+      </div>
 
       <div className="orientation-layout">
         <div className="model-list">
@@ -1228,7 +2731,7 @@ function ModelOrientationTool({ project }: { project: ProjectSummary }) {
             </button>
           ))}
           {catalog && catalog.models.length === 0 ? (
-            <p className="empty-state">No GLB files found at assets/models/ships.</p>
+            <p className="empty-state">No GLB files found in the selected model folder.</p>
           ) : null}
         </div>
 
@@ -1304,6 +2807,7 @@ function ModelOrientationTool({ project }: { project: ProjectSummary }) {
 
               <ModelPreview
                 projectPath={project.path}
+                modelFolder={modelFolder}
                 model={selected}
                 transform={draft}
                 onTransformChange={setDraft}
@@ -1342,11 +2846,13 @@ function ModelOrientationTool({ project }: { project: ProjectSummary }) {
 
 function ModelPreview({
   projectPath,
+  modelFolder,
   model,
   transform,
   onTransformChange
 }: {
   projectPath: string;
+  modelFolder: string;
   model: ShipModelOrientationEntry;
   transform: ShipModelTransform;
   onTransformChange: (transform: ShipModelTransform) => void;
@@ -1493,8 +2999,9 @@ function ModelPreview({
     let disposed = false;
     let loadedRoot: THREE.Object3D | null = null;
     const loader = new GLTFLoader();
+    loader.setMeshoptDecoder(MeshoptDecoder);
     void projectApi
-      .loadShipModelPreview(projectPath, model.modelPath)
+      .loadShipModelPreview(projectPath, modelFolder, model.modelPath)
       .then((modelBytes) => {
         if (disposed) return;
 

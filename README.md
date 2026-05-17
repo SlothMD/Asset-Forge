@@ -79,7 +79,7 @@ The default launcher runs the faster Tauri dev shell for local work. Use `.\laun
 
 Project metadata can store a portable GitHub repository URL. The local external project folder is stored per machine by the desktop app, so the same Asset Forge project can bind to different local clone paths on different computers before running Git status, pull, or push.
 
-The first model-orientation workflow is documented in [`docs/model-orientation-tool.md`](docs/model-orientation-tool.md). It scans a linked project for GLB ship models and writes a per-model transform manifest that consuming games or Blender automation can apply. Follow-on model hardpoint and image optimization tooling is tracked in [`docs/tooling-checklist.md`](docs/tooling-checklist.md).
+The first model-orientation workflow is documented in [`docs/model-orientation-tool.md`](docs/model-orientation-tool.md). It scans a linked project for GLB models and writes a per-model transform manifest that consuming games or Blender automation can apply. Runtime GLB staging is documented in [`docs/model-optimization-tool.md`](docs/model-optimization-tool.md). Source-image orientation and machine-readable handoff manifests are documented in [`docs/handoff-manifests.md`](docs/handoff-manifests.md). Follow-on model hardpoint and image optimization tooling is tracked in [`docs/tooling-checklist.md`](docs/tooling-checklist.md).
 
 ## Current Status
 
