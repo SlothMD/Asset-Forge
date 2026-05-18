@@ -1,0 +1,65 @@
+version: 1
+updated: 2026-05-17
+areas:
+  ui:
+    guidance:
+      - refs/UI/uiStyle.yaml
+    source_roots:
+      - apps/desktop/src
+      - packages/ui
+
+  planning:
+    guidance:
+      - refs/project.yaml
+      - refs/planning/modules.yaml
+      - refs/planning/roadmap.yaml
+      - refs/planning/todos.yaml
+      - refs/planning/decisions.yaml
+      - refs/architecture/boundaries.yaml
+
+  handoffs:
+    guidance:
+      - refs/handoffs/currentHandoff.md
+      - refs/handoffs/implementationLog.yaml
+      - refs/testing/acceptanceCriteria.yaml
+      - refs/testing/validationCommands.yaml
+
+  desktop_shell:
+    source_roots:
+      - apps/desktop
+      - apps/desktop/src-tauri
+    launchers:
+      - launch-asset-forge.cmd
+      - launch-asset-forge.ps1
+
+  core_domain:
+    source_roots:
+      - packages/core
+      - packages/storage
+      - packages/renderer
+      - packages/workers
+
+  model_optimization:
+    guidance:
+      - refs/planning/todos.yaml
+      - refs/planning/integrationMap.yaml
+      - docs/model-optimization-tool.md
+    likely_source_roots:
+      - apps/desktop/src
+      - apps/desktop/src-tauri
+      - tools
+
+  trellis_batch_conversion:
+    guidance:
+      - docs/trellis-batch-conversion.md
+      - refs/planning/integrationMap.yaml
+    source_roots:
+      - tools
+
+  handoff_manifests:
+    guidance:
+      - docs/handoff-manifests.md
+      - refs/architecture/boundaries.yaml
+    project_local_roots:
+      - refs/assetForge
+      - refs/assetForge/logs

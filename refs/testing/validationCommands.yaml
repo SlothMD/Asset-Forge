@@ -1,0 +1,26 @@
+version: 1
+commands:
+  - id: frontend-typecheck
+    description: Check frontend TypeScript without emitting build artifacts.
+    command: npm run typecheck
+    required_before_handoff: true
+
+  - id: frontend-build
+    description: Check frontend build output.
+    command: npm run build
+    required_before_handoff: true
+
+  - id: tauri-release-build
+    description: Build Tauri release-shaped app and installers.
+    command: npm run tauri:build
+    required_before_handoff: false
+    notes:
+      - Use before release-shape launcher or installer changes.
+
+  - id: rust-check
+    description: Check Tauri/Rust build.
+    command: cargo check
+    working_directory: apps/desktop/src-tauri
+    required_before_handoff: true
+    known_blockers:
+      - rust-msvc-sdk-linker

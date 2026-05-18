@@ -1,0 +1,29 @@
+version: 1
+entries:
+  - date: 2026-05-17
+    agent: codex
+    area: project-memory
+    summary: Established refs-based project documentation structure and expanded architecture boundaries, modules, file maps, handoffs, and validation references.
+    changed_files:
+      - refs/project.yaml
+      - refs/architecture/boundaries.yaml
+      - refs/planning/modules.yaml
+      - refs/planning/integrationMap.yaml
+      - refs/implementation/fileMap.yaml
+      - refs/handoffs/currentHandoff.md
+      - refs/testing/acceptanceCriteria.yaml
+      - refs/testing/validationCommands.yaml
+      - refs/agents.yaml
+    validation:
+      status: pending
+      reason: Documentation-only structure update; run validation commands before code changes.
+
+  - date: 2026-05-16
+    agent: codex
+    area: model-optimization
+    summary: Added staged output detection plan.
+    changed_files:
+      - refs/planning/todos.yaml
+    validation:
+      status: blocked
+      reason: MSVC linker missing msvcrt.lib

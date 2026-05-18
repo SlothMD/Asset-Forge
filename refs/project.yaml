@@ -1,0 +1,192 @@
+version: 1
+updated: 2026-05-17
+
+identity:
+  name: Asset Foundry
+  repo_name: Asset Forge
+  package_name: asset-forge
+  repository_url: https://github.com/SlothMD/Asset-Forge
+  product_summary: Local-first production workflow engine for tabletop, board game, wargame, and strategy game assets.
+  short_summary: Local-first asset pipeline toolset for game asset generation, review, optimization, export, and promotion.
+  current_phase: proof-of-concept
+  distribution_goal: Local desktop executable first, with future hosted account and sync support.
+
+thesis:
+  core_promise: Design the component once, update the data anytime, regenerate everything.
+  pipeline: game data -> component templates -> batch render -> print and digital exports -> versioned playtest builds
+  durable_value:
+    - Structured game data as the source of truth.
+    - Repeatable asset pipelines rather than one-off manual art operations.
+    - Deterministic exports for print, digital tabletop, and runtime asset use.
+    - Reviewable handoff manifests and audit trails for asset production.
+  ai_position: AI may assist with placeholder art, icons, variants, and optimization, but the product is not primarily an AI art generator.
+
+audience:
+  primary_users:
+    - Solo and small-team board game designers prototyping from spreadsheets.
+    - Wargame and strategy game designers producing counters, faction sheets, scenario sheets, maps, and digital tabletop packages.
+    - Indie digital strategy developers needing 2D asset sheets, icons, counters, token states, UI badges, model staging, and data-linked exports.
+  early_dogfood_projects:
+    - Sector 404 tactical space combat assets.
+    - Solar system 4X game sharing universe and style needs with Sector 404.
+    - Dungeon crawler with tiles, tokens, monsters, items, status markers, cards, and references.
+    - Family-weight pattern-matching board game with readable iconography and clean print-and-play output.
+
+operating_model:
+  primary_mode: local-first
+  secondary_mode: hosted-capable
+  offline_capable_core: true
+  source_of_truth: inspectable project folders and portable metadata, not a hosted database.
+  hosted_future:
+    account_model: Asset Forge account service for identity, entitlements, and project-list sync.
+    first_recommended_backend: Firebase Auth plus Firestore.
+    later_backend_role: VPS/API layer for sales webhooks, Steam verification, and provider integrations that should not run in the desktop client.
+  credential_policy:
+    - Do not store provider secrets in project.json or tracked repo files.
+    - Store machine credentials in OS credential storage or provider-native credential managers.
+    - Store only portable links, provider IDs, and non-secret sync metadata in project records.
+
+stack:
+  desktop_shell: Tauri v2
+  frontend: React 19, TypeScript, Vite
+  native_backend: Rust exposed through narrow Tauri commands
+  package_manager: npm workspaces
+  node_engine: ">=20"
+  local_database_future: SQLite as an index/cache only, not canonical project storage.
+  rendering_model: SVG-first previews with PNG/PDF/export manifest paths.
+  heavy_workers: Rust first, sidecar workers only where useful.
+
+repository_layout:
+  apps:
+    desktop: Tauri + React desktop app shell.
+  packages:
+    core: Shared project schema, validation, and build logic.
+    renderer: SVG-first preview and export rendering.
+    storage: Local project storage adapters.
+    ui: Shared editor and workflow components.
+    workers: Export and image-processing worker boundaries.
+  docs:
+    purpose: Product briefs, architecture notes, tool handoffs, and durable implementation plans.
+  refs:
+    purpose: Agent-readable project memory, UI guidance, planning, handoff manifests, and durable todos.
+  examples:
+    purpose: Dogfood fixtures and sample game data.
+  tools:
+    purpose: Local helper scripts for conversion, staging, and asset preparation.
+
+project_folder_model:
+  canonical_file: project.json
+  expected_shape:
+    - data/
+    - assets/images/
+    - assets/backgrounds/
+    - assets/tokens/
+    - assets/generated/
+    - icons/
+    - templates/
+    - style-kits/
+    - builds/
+    - exports/
+  properties:
+    - Human-readable.
+    - Backup-friendly.
+    - Source-control-friendly.
+    - Portable across machines.
+    - Suitable for deterministic rebuilds.
+
+current_capabilities:
+  launcher:
+    - Desktop launcher can run Tauri dev or release-shaped builds.
+    - Project list shows local projects and external project linkage.
+  project_metadata:
+    - Project metadata supports portable GitHub repository URL.
+    - Local external project folder binding is machine-specific.
+    - Git status, pull, and push actions are scoped to linked local folders.
+  asset_tooling:
+    - Trellis batch conversion helper script.
+    - Source-image orientation documentation and handoff manifests.
+    - Model orientation workflow for GLB transform manifests.
+    - Runtime GLB staging and optimization workflow documentation.
+    - Planning for image/model review and promote-to-runtime workflows.
+
+planned_capabilities:
+  phase_0_poc:
+    - Local project file and folder creation.
+    - CSV import.
+    - Basic Card Forge.
+    - Basic Token Forge.
+    - Simple template rendering.
+    - Batch PNG export.
+    - Basic print sheet export.
+  near_term:
+    - Durable refs-based handoff foundation.
+    - Asset preparation pipeline.
+    - Review notes and approval states for staged assets.
+    - Promote-to-runtime workflows.
+    - Configurable external tool paths per machine.
+  later:
+    - Hosted account and project-list sync.
+    - Steam and direct-sale entitlement integration.
+    - Tabletop Simulator sync.
+    - The Game Crafter sync.
+    - Blender and optimizer automation for transforms, hardpoints, attachment nodes, and runtime exports.
+
+integration_strategy:
+  github:
+    purpose: Optional project-level source control and sync provider.
+    portable_project_data:
+      - githubRepositoryUrl
+    local_machine_data:
+      - localFolder
+      - last sync status
+    credential_recommendation:
+      - Prefer Git Credential Manager or SSH keys for local git operations.
+      - Use GitHub OAuth device or loopback flow for app-level GitHub API access.
+      - Store tokens in OS credential storage, never in project metadata.
+  steam:
+    purpose: Future sales entitlement provider and optional project/package metadata link.
+    portable_project_data:
+      - steamAppId
+      - steamPackageId
+    credential_recommendation:
+      - Steam partner keys stay backend-only.
+      - Steam ownership verification is handled by the Asset Forge backend.
+      - Steam build should link Steam identity to the Asset Forge account model.
+  future_providers:
+    - tabletopSimulator
+    - gameCrafter
+
+quality_bar:
+  architecture:
+    - Keep frontend access to filesystem and shell operations behind narrow Tauri commands.
+    - Keep UI independent of whether a project is local-only or cloud-indexed.
+    - Keep rendering deterministic across preview and export.
+    - Keep SQLite/cache data replaceable and non-canonical.
+  ux:
+    - Compact, information-dense desktop tooling.
+    - Current project state visible at a glance.
+    - Clear local-vs-cloud and this-machine-vs-portable distinctions.
+    - Inline validation and review state where possible.
+  security:
+    - No secrets in tracked files.
+    - No GitHub, Steam, or sales-provider credentials in project.json.
+    - Environment-managed secrets for hosted services.
+    - Machine-specific credentials stored in OS credential storage.
+
+source_of_truth:
+  product_brief: docs/product-brief.md
+  architecture: docs/architecture-handoff.md
+  user_awareness_plan: docs/user-awareness-sync-plan.md
+  planning: refs/planning
+  ui: refs/UI
+  handoffs: refs/handoffs
+  durable_todos: refs/planning/todos.yaml
+  roadmap: refs/planning/roadmap.yaml
+  decisions: refs/planning/decisions.yaml
+
+known_open_questions:
+  - Final public product name: Asset Foundry vs Asset Forge.
+  - First account provider configuration and production domain mapping.
+  - Direct-sale stack preference: Stripe-first custom checkout vs WooCommerce integration.
+  - Steamworks timeline and app/package IDs.
+  - Canonical schema for providerLinks across GitHub, Steam, Tabletop Simulator, and The Game Crafter.

@@ -1,0 +1,9 @@
+version: 1
+criteria:
+  - id: model-optimizer-existing-staging-awareness
+    todo_id: model-optimizer-existing-staging-awareness
+    acceptance:
+      - Tool detects existing staged optimization outputs on startup.
+      - Tool reads the model optimization manifest if present.
+      - Existing outputs are shown without rerunning optimization.
+      - Missing manifest is handled gracefully.

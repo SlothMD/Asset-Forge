@@ -1,0 +1,223 @@
+version: 1
+updated: 2026-05-17
+
+purpose: Architecture boundary rules for keeping Asset Forge local-first, portable, deterministic, auditable, and safe to extend.
+
+boundary_status_values:
+  - accepted
+  - proposed
+
+boundaries:
+  - id: refs-are-guidance
+    status: accepted
+    owner_area: refs
+    rules:
+      - Files under this repo's refs folder define durable project guidance, planning memory, UI guidance, architecture boundaries, and handoff state.
+      - Planning updates, schema updates, handoff updates, and agent-readable context belong in refs when they need to survive chat context.
+      - refs files must not contain provider secrets, personal credentials, API keys, or machine-only credentials.
+    allowed_changes:
+      - planning updates
+      - schema updates
+      - architecture updates
+      - handoff updates
+      - UI guidance updates
+
+  - id: frontend-boundary
+    status: accepted
+    owner_area: apps/desktop/src
+    rules:
+      - The React frontend owns presentation, interaction state, validation display, previews, and calls into typed services.
+      - The frontend must not receive broad filesystem or shell access.
+      - Filesystem, Git, external executable, and machine configuration operations must go through narrow Tauri commands or service interfaces.
+      - UI code should not encode machine-specific absolute paths except as user-visible values loaded from machine-local config or bindings.
+    suggested_enforcement:
+      - Keep Tauri invoke wrappers centralized.
+      - Avoid direct shell plugin use from arbitrary components.
+
+  - id: tauri-bridge-boundary
+    status: accepted
+    owner_area: apps/desktop/src-tauri
+    rules:
+      - Tauri commands form the trust boundary between UI and native capabilities.
+      - Commands should be narrow, typed, and named for user workflows rather than exposing raw shell or arbitrary path operations.
+      - Long-running commands should report progress and support cancellation when practical.
+      - Native commands must validate paths, tool availability, and provider state before mutating files.
+    suggested_enforcement:
+      - Prefer explicit command structs for inputs and typed response structs for outputs.
+      - Keep command side effects documented in code or refs when they affect project files.
+
+  - id: portable-vs-machine-local-data
+    status: accepted
+    owner_area: project-storage
+    rules:
+      - Portable project metadata belongs in the project folder, primarily project.json and project-local refs/assetForge manifests.
+      - Machine-local paths, local folder bindings, external executable paths, service URLs, and local tool health belong in Asset Forge app data.
+      - A project may store portable provider links such as repository URL, Steam app ID, or export target IDs.
+      - A project must not store this-machine-only paths as canonical requirements for other machines.
+    examples:
+      portable:
+        - project.json
+        - providerLinks.github.repositoryUrl
+        - providerLinks.steam.appId
+        - refs/assetForge/model-orientation.manifest.json
+      machine_local:
+        - machine-config.json
+        - projectId -> localFolder bindings
+        - ComfyUI URL
+        - Blender executable path
+
+  - id: credential-boundary
+    status: accepted
+    owner_area: security
+    rules:
+      - Secrets, OAuth refresh tokens, provider API keys, Steam partner keys, GitHub tokens, and sales-provider credentials must not be stored in project.json, refs, docs, examples, or tracked source files.
+      - Desktop-held credentials must use OS credential storage or provider-native credential managers.
+      - Backend-only secrets must be stored in hosted environment variables or a managed secret store.
+      - Project files may store non-secret provider identifiers and links.
+    provider_notes:
+      github:
+        - Local Git operations should prefer Git Credential Manager or SSH keys.
+        - App-level GitHub API access should use OAuth device or loopback flow.
+      steam:
+        - Steam partner keys stay backend-only.
+        - Steam ownership checks happen through the hosted backend.
+
+  - id: project-folder-boundary
+    status: accepted
+    owner_area: project-storage
+    rules:
+      - Project folders are user-owned, inspectable, backup-friendly, and source-control-friendly.
+      - Canonical project state should remain human-readable when practical.
+      - SQLite or other local databases may index/cache project metadata but must not become the only source of truth.
+      - Project folders should remain usable without an Asset Forge cloud account for core local workflows.
+    canonical_project_paths:
+      - project.json
+      - data/
+      - assets/
+      - icons/
+      - templates/
+      - style-kits/
+      - builds/
+      - exports/
+      - refs/assetForge/
+
+  - id: generated-asset-lifecycle
+    status: accepted
+    owner_area: asset-tools
+    rules:
+      - Generated assets must go to a configured build, staging, or generated-output folder before promotion.
+      - Source assets must not be overwritten by default.
+      - Destructive changes to source assets require explicit user action.
+      - Staged generated assets should be reviewable before promotion to runtime, export, or canonical project folders.
+      - Promotion should produce or update a traversable manifest record for the target project.
+      - Operations that affect game assets must create a traversable record for the game project's developer or downstream tooling.
+    lifecycle:
+      - source
+      - generated or staged
+      - reviewed
+      - promoted
+      - exported
+
+  - id: handoff-manifest-boundary
+    status: accepted
+    owner_area: refs/assetForge
+    rules:
+      - Tool decisions that need downstream consumption belong in project-local refs/assetForge manifests.
+      - Tool activity that changes manifests or staged outputs should append to refs/assetForge/logs/asset-forge-audit.jsonl.
+      - Manifest entries should prefer relative paths when possible.
+      - Absolute paths may be stored as local convenience fields but must not be treated as portable identifiers.
+      - Handoff manifests should be versioned and explicit enough for coding agents, runtime loaders, or later Asset Forge sessions to consume.
+
+  - id: deterministic-rendering-boundary
+    status: accepted
+    owner_area: renderer
+    rules:
+      - Preview and export must share renderer logic where possible.
+      - The same template, data row, style kit, asset references, and export preset should produce the same output.
+      - Build outputs should snapshot input data, template, style, and export settings.
+      - Renderer modules should not depend on ambient UI state or machine-local paths except through explicit asset references.
+
+  - id: tool-integration-boundary
+    status: accepted
+    owner_area: machine-config
+    rules:
+      - External tool locations, URLs, working directories, and enabled flags are machine-local configuration.
+      - Tools such as ComfyUI, Blender, ImageMagick, glTF Transform, gltfpack, Git, and local AI services must be discovered or configured per machine.
+      - App tools should show tool health before running workflows that depend on external executables or services.
+      - Project presets may suggest paths, but tools must allow explicit source and output path selection.
+
+  - id: provider-sync-boundary
+    status: accepted
+    owner_area: provider-sync
+    rules:
+      - Provider sync modules coordinate portable provider links, local bindings, credentials, and sync results without merging those concerns into one file.
+      - GitHub repository URLs may be portable project metadata.
+      - Local clone folders are machine-local bindings.
+      - Sync actions should be disabled or blocked when the current machine has no valid local binding.
+      - Provider sync should write non-secret status metadata only.
+    providers:
+      current:
+        - github
+      planned:
+        - steam
+        - tabletopSimulator
+        - gameCrafter
+
+  - id: hosted-service-boundary
+    status: accepted
+    owner_area: hosted-future
+    rules:
+      - Hosted services may own identity, entitlement records, project-list indexes, and provider verification that should not run in the desktop app.
+      - Hosted services must not become required for core local workflows unless a feature is explicitly cloud-only.
+      - Sales webhooks, Steam ownership verification, and backend-only provider keys belong on the hosted backend.
+      - Public source/docs should avoid private endpoint mappings; those mappings belong in private references or hosted environment configuration.
+
+  - id: entitlement-boundary
+    status: proposed
+    owner_area: hosted-future
+    rules:
+      - Direct-sale purchases and Steam ownership should map into one Asset Forge entitlement model.
+      - Steam should be an entitlement provider, not the primary Asset Forge identity system.
+      - Direct-sale checkout and Steam verification should update backend entitlement records rather than project files.
+      - The desktop app should query entitlement state after account sign-in.
+
+  - id: schema-versioning-boundary
+    status: accepted
+    owner_area: schemas
+    rules:
+      - Durable files need schemaVersion or version fields.
+      - Project metadata, handoff manifests, provider links, build records, export records, and machine config should be versioned.
+      - Schema migrations should be explicit and should preserve user-owned project data.
+      - Breaking schema changes should include compatibility handling or a migration note.
+
+  - id: package-boundary
+    status: proposed
+    owner_area: repository-layout
+    rules:
+      - packages/core owns shared schemas, validation, and domain types.
+      - packages/renderer owns deterministic preview and export rendering logic.
+      - packages/storage owns storage adapter interfaces and non-UI persistence contracts.
+      - packages/ui owns reusable UI components that are not tightly coupled to one workflow.
+      - packages/workers owns long-running export and processing worker boundaries.
+      - apps/desktop may host workflow-specific tools until a module proves reusable enough to extract.
+
+  - id: auditability-boundary
+    status: accepted
+    owner_area: asset-tools
+    rules:
+      - Asset-affecting tool runs should leave enough record to understand what changed, when, and from which inputs.
+      - Audit logs should be append-only unless a user explicitly chooses a cleanup/compaction operation.
+      - Review notes and approval decisions should persist beside staged output manifests.
+      - Agents should prefer updating durable plans and manifests over leaving important decisions only in chat.
+
+suggested_new_boundaries:
+  - id: worker-progress-boundary
+    reason: Long-running Comfy, Blender, optimization, and export jobs need consistent progress, cancellation, and failure reporting.
+  - id: destructive-operation-boundary
+    reason: Baking transforms, overwriting optimized assets, or promoting generated assets should require explicit confirmation and auditable records.
+  - id: cloud-sync-conflict-boundary
+    reason: Project-list sync will need merge/conflict rules once multiple machines can update metadata.
+  - id: plugin-provider-boundary
+    reason: TTS, The Game Crafter, Steam, and future providers will need a consistent provider interface before integrations multiply.
+  - id: privacy-telemetry-boundary
+    reason: Before public release, define what diagnostics are collected, what stays local, and what requires opt-in.

@@ -1,0 +1,500 @@
+version: 1
+updated: 2026-05-17
+
+purpose: Durable module map for Asset Forge implementation planning, agent orientation, and scope control.
+
+module_status_values:
+  - shipped
+  - partial
+  - planned
+  - later
+  - blocked
+
+modules:
+  - id: desktop-shell
+    name: Desktop Shell
+    status: partial
+    owner_area: apps/desktop
+    package_or_path: apps/desktop
+    responsibility: Host the React UI in Tauri, expose native commands, package local executable builds, and launch project tools.
+    current_state:
+      - Tauri v2 shell exists.
+      - React/Vite frontend exists.
+      - Release and dev launch scripts exist.
+      - Bundle icon is configured.
+    near_term_work:
+      - Keep release-shape launch path healthy.
+      - Add app-level navigation and compact launcher state for account/project awareness.
+      - Keep frontend access to filesystem and shell actions behind narrow commands.
+    dependencies:
+      - tauri-bridge
+      - project-launcher
+      - machine-config
+
+  - id: tauri-bridge
+    name: Tauri Bridge
+    status: partial
+    owner_area: apps/desktop/src-tauri
+    package_or_path: apps/desktop/src-tauri/src/lib.rs
+    responsibility: Provide Rust-backed commands for project IO, local machine bindings, Git sync, path selection, scans, optimization, and future worker execution.
+    current_state:
+      - Project creation/open/update commands exist.
+      - Machine-local project link registry exists.
+      - Git status, pull, and push commands exist for linked local folders.
+      - Asset/tool commands have expanded in the current app surface.
+    near_term_work:
+      - Keep commands narrow and typed.
+      - Add validation around external executables and provider operations.
+      - Add progress/cancellation patterns for long-running jobs.
+    dependencies:
+      - project-storage
+      - machine-config
+      - provider-sync
+
+  - id: project-launcher
+    name: Project Launcher
+    status: partial
+    owner_area: apps/desktop/src
+    package_or_path: apps/desktop/src/main.tsx
+    responsibility: Show known projects, open/create projects, show this-machine linkage, and route into project tools.
+    current_state:
+      - Lists projects.
+      - Opens and creates local project folders.
+      - Shows project details and notes.
+      - Stores portable GitHub repository URL and machine-local folder binding.
+      - Exposes Git status/pull/push actions for linked Git folders.
+    near_term_work:
+      - Add user sign-in state.
+      - Merge cloud project index with local machine bindings.
+      - Add linked/not-linked/missing-folder state for every project.
+      - Add clone/relink/unlink-this-machine flows.
+    dependencies:
+      - user-awareness
+      - project-storage
+      - provider-sync
+
+  - id: project-storage
+    name: Project Storage
+    status: partial
+    owner_area: packages/storage and Tauri backend
+    package_or_path: packages/storage
+    responsibility: Manage inspectable project folders, portable project metadata, future SQLite cache/indexes, and machine-specific app data.
+    current_state:
+      - Project folders are created under the user's Documents area.
+      - project.json is the canonical project metadata file.
+      - Machine-local project links are stored outside project folders.
+      - Storage package only has a first-pass adapter interface.
+    near_term_work:
+      - Formalize project.json schema.
+      - Add import/open existing folder flow.
+      - Add stale-path and missing-folder validation.
+      - Introduce SQLite only as cache/index metadata when needed.
+    dependencies:
+      - core-domain
+      - machine-config
+
+  - id: core-domain
+    name: Core Domain Model
+    status: partial
+    owner_area: packages/core
+    package_or_path: packages/core
+    responsibility: Define shared project, component, data source, template, export, provider-link, and validation types.
+    current_state:
+      - First-pass project types exist.
+      - Machine project binding type exists.
+      - Full data/template/build schemas are still planned.
+    near_term_work:
+      - Define project.json schema.
+      - Define CSV/data source schema.
+      - Define template, style kit, asset reference, build, and export preset schemas.
+      - Define providerLinks shape for GitHub, Steam, Tabletop Simulator, and The Game Crafter.
+    dependencies: []
+
+  - id: renderer
+    name: Renderer
+    status: planned
+    owner_area: packages/renderer
+    package_or_path: packages/renderer
+    responsibility: Deterministically render templates from data rows, style kits, and asset references into preview, PNG, PDF, TTS, and manifest outputs.
+    current_state:
+      - Package scaffold exists.
+      - SVG-first architecture is documented.
+    near_term_work:
+      - Implement hardcoded poker-card template renderer for POC.
+      - Share preview/export rendering path to avoid drift.
+      - Emit export manifests for generated outputs.
+    dependencies:
+      - core-domain
+      - asset-library
+
+  - id: data-import
+    name: Data Import
+    status: planned
+    owner_area: app service and packages/core
+    package_or_path: packages/core
+    responsibility: Import CSV or tabular game data, infer headers, preview rows, validate required fields, and snapshot data into builds.
+    current_state:
+      - Product and architecture docs define CSV import as a POC requirement.
+      - Example CSV fixture exists under examples.
+    near_term_work:
+      - Add CSV parser and validation model.
+      - Add row preview and error reporting.
+      - Persist imported data under project data folders.
+    dependencies:
+      - core-domain
+      - project-storage
+
+  - id: card-forge
+    name: Card Forge
+    status: planned
+    owner_area: app tools and renderer
+    package_or_path: apps/desktop/src
+    responsibility: Produce repeatable card previews and exports from data rows and templates.
+    current_state:
+      - Product brief identifies Basic Card Forge as Phase 0.
+      - No dedicated card editor module exists yet.
+    near_term_work:
+      - Render hardcoded poker-card template from CSV rows.
+      - Export individual card PNGs.
+      - Export basic print-and-play PDF sheets.
+    dependencies:
+      - data-import
+      - renderer
+      - export-pipeline
+
+  - id: token-forge
+    name: Token Forge
+    status: planned
+    owner_area: app tools and renderer
+    package_or_path: apps/desktop/src
+    responsibility: Produce tokens, counters, status markers, and token sheets for print and digital tabletop use.
+    current_state:
+      - Product brief identifies Basic Token Forge as Phase 0.
+      - Source-image orientation tooling supports downstream token/model workflows.
+    near_term_work:
+      - Define token template schema.
+      - Add token preview/export loop.
+      - Integrate image orientation manifests where useful.
+    dependencies:
+      - renderer
+      - asset-library
+      - source-image-orientation
+
+  - id: asset-library
+    name: Asset Library
+    status: partial
+    owner_area: project folders and app tools
+    package_or_path: project assets/ folders
+    responsibility: Track source assets, generated assets, icons, backgrounds, models, staged optimization outputs, and role metadata.
+    current_state:
+      - Project folder model includes assets/images, backgrounds, tokens, generated, and icons.
+      - Tooling writes handoff manifests under refs/assetForge in linked projects.
+    near_term_work:
+      - Add asset scan/index service.
+      - Add role classification and missing-pair warnings for textures.
+      - Add review/promote state for staged generated assets.
+    dependencies:
+      - project-storage
+      - handoff-manifests
+
+  - id: source-image-orientation
+    name: Source Image Orientation
+    status: partial
+    owner_area: app tool and refs/assetForge manifests
+    package_or_path: docs/handoff-manifests.md
+    responsibility: Review source image rotation, flips, asset role, notes, and audit history before downstream conversion or token use.
+    current_state:
+      - Manifest format is documented.
+      - Append-only audit entries are established.
+      - Trellis batch conversion consumes source orientation manifests.
+    near_term_work:
+      - Add contact-sheet/orientation review helper.
+      - Add manifest validation and stale-path warnings.
+      - Keep absolute paths optional and non-portable.
+    dependencies:
+      - handoff-manifests
+      - trellis-batch-conversion
+
+  - id: trellis-batch-conversion
+    name: Trellis/Comfy 3D Batch Conversion
+    status: partial
+    owner_area: tools and app tool wrapper
+    package_or_path: tools/Convert-Trellis2Batch.ps1
+    responsibility: Convert batches of source images into 3D models through selectable Trellis/Comfy workflow paths and staging folders.
+    current_state:
+      - Generic batch conversion script exists.
+      - Supports selectable source/output/workflow/Comfy/staging paths.
+      - Supports optional source orientation manifest or CSV.
+      - First-pass UI wrapper is tracked as complete in tooling checklist.
+    near_term_work:
+      - Add progress reporting, cancellation, and run log.
+      - Add post-conversion model optimization and naming normalization.
+      - Add import manifest writer for downstream projects.
+    dependencies:
+      - source-image-orientation
+      - model-optimization
+      - machine-config
+
+  - id: model-orientation
+    name: Model Orientation
+    status: partial
+    owner_area: app tool and refs/assetForge manifests
+    package_or_path: docs/model-orientation-tool.md
+    responsibility: Scan GLB models and persist per-model yaw, pitch, roll, and scale overrides without destructively modifying source files.
+    current_state:
+      - First-pass manifest editor exists.
+      - Configurable input model folder and manifest path are complete.
+      - Audit entries are appended to project-local logs.
+    near_term_work:
+      - Add hardpoint editor for attachment metadata.
+      - Add preview overlays for hardpoints.
+      - Add optional Blender automation for approved transform baking.
+    dependencies:
+      - handoff-manifests
+      - model-hardpoints
+      - machine-config
+
+  - id: model-hardpoints
+    name: Model Hardpoints
+    status: planned
+    owner_area: app tool and model manifests
+    package_or_path: refs/assetForge model manifests
+    responsibility: Define editable attachment anchors such as engine ports, thrusters, weapon hints, camera inspect anchors, and selection anchors.
+    current_state:
+      - Tracked in tooling checklist.
+      - No implementation yet.
+    near_term_work:
+      - Define hardpoint schema.
+      - Add editable position, rotation, radius, and label fields.
+      - Save hardpoints beside orientation transforms.
+    dependencies:
+      - model-orientation
+      - handoff-manifests
+
+  - id: model-optimization
+    name: Model Optimization
+    status: partial
+    owner_area: app tool and refs/assetForge manifests
+    package_or_path: docs/model-optimization-tool.md
+    responsibility: Stage optimized runtime-ready GLB copies while preserving source models and recording optimization decisions.
+    current_state:
+      - Scans GLB files recursively.
+      - Uses npx @gltf-transform/cli optimize as first backend.
+      - Supports geometry compression, texture compression, simplification, target triangle count, forced regeneration, and side-by-side review.
+      - Writes model optimization manifest and audit log entries.
+    near_term_work:
+      - Add progress reporting and cancellation.
+      - Detect existing staged outputs and manifests when opening/scanning.
+      - Add configured executable support for local gltfpack or glTF Transform.
+      - Add promote/copy-to-runtime workflow after review.
+    dependencies:
+      - handoff-manifests
+      - machine-config
+      - asset-library
+
+  - id: image-optimization
+    name: Image Optimization
+    status: partial
+    owner_area: app tool and refs/assetForge manifests
+    package_or_path: apps/desktop/src
+    responsibility: Scan, classify, optimize, and stage texture/image copies without overwriting sources.
+    current_state:
+      - Source and staging folder fields exist.
+      - Recursive scan and file classification exist.
+      - Flags oversized textures, large PNGs, unknown types, and non-power-of-two dimensions.
+      - Supports global target max size and output format.
+    near_term_work:
+      - Flag duplicate maps and missing paired maps.
+      - Let users choose target max size per type.
+      - Generate optimization manifest.
+      - Add presets for Godot runtime assets, web assets, marketing images, and UI icon sheets.
+      - Add progress/cancellation support.
+    dependencies:
+      - asset-library
+      - handoff-manifests
+      - machine-config
+
+  - id: handoff-manifests
+    name: Handoff Manifests and Audit Logs
+    status: partial
+    owner_area: refs/assetForge in linked projects
+    package_or_path: docs/handoff-manifests.md
+    responsibility: Store durable tool decisions, transform metadata, optimization choices, audit records, and implementation handoff summaries.
+    current_state:
+      - JSON is the first canonical handoff format.
+      - refs/assetForge and refs/assetForge/logs are established.
+      - Project-local JSONL audit log path is established.
+      - Source image and model orientation manifests include audit entries.
+    near_term_work:
+      - Add manifest validation and stale-path warnings.
+      - Add export summaries for coding-agent handoff.
+      - Backfill image optimization outputs with a manifest.
+    dependencies:
+      - project-storage
+
+  - id: export-pipeline
+    name: Export Pipeline
+    status: planned
+    owner_area: packages/renderer and packages/workers
+    package_or_path: packages/workers
+    responsibility: Batch render build outputs, write PNG/PDF/TTS/runtime assets, and emit export manifests.
+    current_state:
+      - Architecture defines export outputs.
+      - Worker package scaffold exists.
+    near_term_work:
+      - Add card PNG export.
+      - Add basic print-and-play PDF export.
+      - Add TTS-style deck/token sheet export.
+      - Snapshot data/template/style inputs for reproducibility.
+    dependencies:
+      - renderer
+      - build-manager
+
+  - id: build-manager
+    name: Build Manager
+    status: planned
+    owner_area: project builds/ folder and app services
+    package_or_path: project builds/
+    responsibility: Create named playtest builds, snapshot inputs, track changelogs, and connect builds to exported artifacts.
+    current_state:
+      - Build folder model is documented.
+      - No dedicated build manager exists yet.
+    near_term_work:
+      - Define build.json schema.
+      - Snapshot data, templates, and style kits.
+      - Track build changelog and export manifest links.
+    dependencies:
+      - core-domain
+      - project-storage
+      - export-pipeline
+
+  - id: machine-config
+    name: This Computer Config
+    status: partial
+    owner_area: app data and settings UI
+    package_or_path: Asset Forge app data machine-config.json
+    responsibility: Store machine-local tool paths, service URLs, working directories, enabled flags, notes, and current computer identity.
+    current_state:
+      - Top-level settings modal exists.
+      - Computer name is shown.
+      - Generic tool entries are stored outside project repos.
+      - Path picker controls exist.
+    near_term_work:
+      - Add health checks for URL services and local executables.
+      - Allow tools to read defaults from machine config automatically.
+      - Keep paths machine-local and out of portable project metadata.
+    dependencies:
+      - desktop-shell
+
+  - id: user-awareness
+    name: User Awareness and Cloud Project Index
+    status: planned
+    owner_area: launcher, future hosted backend
+    package_or_path: docs/user-awareness-sync-plan.md
+    responsibility: Recognize the signed-in user, sync the user's project list, and indicate current-machine local folder linkage.
+    current_state:
+      - Plan exists.
+      - Local machine project bindings exist.
+      - Hosted identity/project index is not implemented.
+    near_term_work:
+      - Add account sign-in state.
+      - Fetch cloud project index after sign-in.
+      - Merge cloud project records with local machine bindings.
+      - Show linked/not-linked/missing-folder state per project.
+    dependencies:
+      - project-launcher
+      - provider-sync
+      - entitlement-service
+
+  - id: provider-sync
+    name: Provider Sync
+    status: partial
+    owner_area: Tauri backend and future hosted backend
+    package_or_path: apps/desktop/src-tauri/src/lib.rs
+    responsibility: Coordinate portable provider links, machine credentials, local sync operations, and future remote provider API calls.
+    current_state:
+      - GitHub repository URL can be stored as portable project metadata.
+      - Local folder is machine-specific.
+      - Git status/pull/push run against linked local Git folders.
+    near_term_work:
+      - Add GitHub connection status.
+      - Add clone/relink/unlink flows.
+      - Add providerLinks schema in core domain.
+      - Keep provider credentials outside project metadata.
+    dependencies:
+      - project-launcher
+      - machine-config
+      - user-awareness
+
+  - id: entitlement-service
+    name: Entitlement Service
+    status: later
+    owner_area: future hosted backend
+    package_or_path: docs/user-awareness-sync-plan.md
+    responsibility: Normalize direct-sale, Steam, and future marketplace ownership into one Asset Forge account entitlement model.
+    current_state:
+      - Recommendation documented.
+      - No implementation yet.
+    near_term_work:
+      - Decide direct-sale path: Stripe-first custom checkout vs WooCommerce integration.
+      - Define entitlement records.
+      - Add webhook processing in hosted backend when needed.
+      - Add Steam ownership verification when Steam build starts.
+    dependencies:
+      - user-awareness
+
+  - id: game-crafter-sync
+    name: The Game Crafter Sync
+    status: later
+    owner_area: future provider integration
+    package_or_path: not yet implemented
+    responsibility: Publish or synchronize approved print/manufacturing assets and metadata with The Game Crafter.
+    current_state:
+      - Mentioned as a future provider in sync planning.
+    near_term_work:
+      - Define portable provider link metadata.
+      - Define credential and backend strategy.
+      - Wait until core export manifests stabilize.
+    dependencies:
+      - export-pipeline
+      - provider-sync
+
+  - id: tts-sync
+    name: Tabletop Simulator Sync
+    status: later
+    owner_area: future provider integration
+    package_or_path: not yet implemented
+    responsibility: Export and synchronize approved TTS-ready deck sheets, token sheets, manifests, and workshop/package metadata.
+    current_state:
+      - Architecture names TTS deck/token sheet output as a renderer/export target.
+    near_term_work:
+      - Add TTS export manifest shape.
+      - Add local TTS package staging.
+      - Add provider sync only after export pipeline is reliable.
+    dependencies:
+      - export-pipeline
+      - provider-sync
+
+cross_cutting_concerns:
+  local_first:
+    - Portable project data must remain useful without hosted services.
+    - Machine-specific paths and tool config stay outside project metadata.
+  deterministic_outputs:
+    - Preview and export should use shared renderer logic.
+    - Build inputs should be snapshotted for reproducibility.
+  security:
+    - Secrets are never stored in project.json or tracked refs.
+    - Provider credentials use OS credential storage or backend-held secrets.
+  reviewability:
+    - Tool decisions should produce manifests and audit logs.
+    - Staged/generated assets should be reviewed before promotion.
+  ui:
+    - Follow refs/UI guidance for compact, stable, information-dense tool surfaces.
+    - Prefer explicit path controls and visible current state for local tool workflows.
+
+open_questions:
+  - Which modules should become separate packages versus app-local tool surfaces?
+  - What is the first hosted account backend project and production domain mapping?
+  - Should model/image optimization move into Rust workers, sidecars, or remain command-driven first?
+  - What is the canonical providerLinks schema for GitHub, Steam, TTS, and The Game Crafter?
+  - Which export target should define the first full build-manager workflow: print-and-play PDF, TTS deck, or runtime asset bundle?

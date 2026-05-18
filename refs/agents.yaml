@@ -1,6 +1,9 @@
 version: 1
 instructions:
   - Agents building or modifying any Asset Forge UI must reference and follow the instructions in refs/UI.
-  - Agents planning Asset Forge work must reference refs/planning/todos.yaml and refs/planning/roadmap.yaml before adding new implementation work.
+  - Agents planning Asset Forge work must reference refs/project.yaml, refs/planning/modules.yaml, refs/planning/todos.yaml, and refs/planning/roadmap.yaml before adding new implementation work.
+  - Agents changing architecture boundaries must update refs/architecture rather than legacy docs only.
   - Keep project-facing plans and durable todos in refs/planning rather than only in chat or ad hoc docs.
   - Treat refs/UI as durable project-local guidance for UI layout, preview behavior, and path/file target controls.
+  - Treat refs/handoffs as the place for current implementation state, validation notes, and next-agent context.
+  - Treat refs/testing as the place for durable acceptance criteria and validation commands.

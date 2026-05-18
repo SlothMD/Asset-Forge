@@ -1,5 +1,7 @@
 # Architecture Handoff
 
+Durable architecture boundaries now live in `refs/architecture/boundaries.yaml`. Keep that file current when implementation choices change a boundary; this document remains a narrative handoff.
+
 ## Architecture Thesis
 
 Asset Foundry should be a local-first creator tool with a web-based interface, native desktop capabilities, deterministic local rendering, portable project files, and a future-compatible sync model.
@@ -9,7 +11,7 @@ The architecture should optimize for:
 - Local executable distribution.
 - Reuse of core UI and logic in a later SaaS portal.
 - Portable, user-owned project data.
-- Deterministic rendering and reproducible exports.
+- Reproducible exports.
 - Offline-capable core workflows.
 - Native or sidecar workers for heavy local tasks.
 - A small POC that does not block future SaaS support.

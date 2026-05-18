@@ -1,0 +1,11 @@
+version: 1
+decisions:
+  - id: local-first-runtime
+    date: 2026-05-16
+    status: accepted
+    decision: Asset Foundry must run as a local executable first.
+    rationale: Core workflows depend on local tools, GPU access, and user-owned files.
+    consequences:
+      - Hosted support must use portable workers.
+      - Desktop workflows are the primary implementation target.
+      - SaaS patterns should not block local execution.

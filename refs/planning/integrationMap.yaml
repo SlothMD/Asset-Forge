@@ -1,0 +1,74 @@
+version: 1
+updated: 2026-05-17
+integrations:
+  - id: comfyui
+    mode: local-worker
+    required_for:
+      - image generation
+      - workflow-based asset generation
+    config_source: refs/integrations/comfyui.yaml
+    config_status: planned
+    hosted_strategy: gpu-worker
+
+  - id: blender
+    mode: local-worker
+    required_for:
+      - model import
+      - model optimization
+      - transforms
+      - hardpoints
+      - runtime export
+    config_source: refs/integrations/blender.yaml
+    config_status: planned
+    hosted_strategy: cpu-or-gpu-worker
+
+  - id: gltf-transform
+    mode: local-cli
+    required_for:
+      - model optimization
+      - GLB inspection
+      - texture compression
+    config_source: machine-config.json
+    config_status: machine-local
+    current_backend: npx @gltf-transform/cli optimize
+    hosted_strategy: worker-cli
+
+  - id: ollama
+    mode: local-worker
+    required_for:
+      - prompt support
+      - metadata support
+      - local agent assistance
+    config_source: refs/integrations/ollama.yaml
+    config_status: planned
+    hosted_strategy: provider-abstraction
+
+  - id: git
+    mode: local-cli
+    required_for:
+      - project repository status
+      - project pull
+      - project push
+      - future clone flow
+    config_source: system PATH or machine-config.json
+    config_status: available-through-system-or-machine-config
+    credential_strategy: Git Credential Manager or SSH keys
+
+  - id: github
+    mode: provider-api
+    required_for:
+      - future cloud project linking
+      - repository metadata
+      - optional account-level GitHub status
+    config_source: OS credential storage
+    config_status: planned
+    credential_strategy: OAuth device or loopback flow
+
+  - id: steam
+    mode: provider-api
+    required_for:
+      - future entitlement verification
+      - optional project app/package metadata
+    config_source: hosted backend environment
+    config_status: later
+    credential_strategy: Steam partner keys stay backend-only
