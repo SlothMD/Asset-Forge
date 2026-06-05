@@ -1,0 +1,22 @@
+version: 1
+updated: 2026-05-18
+stack:
+  desktop_shell: Tauri v2
+  frontend:
+    framework: React 19
+    language: TypeScript
+    bundler: Vite
+  native_backend:
+    language: Rust
+    boundary: Tauri commands
+  package_manager: npm workspaces
+  node_engine: ">=20"
+  rendering_model: SVG-first previews with PNG/PDF/export manifests
+  local_database_future: SQLite as replaceable index/cache only
+  heavy_workers:
+    preferred: Rust
+    optional_sidecars:
+      - Blender
+      - ComfyUI
+      - ImageMagick
+      - glTF Transform

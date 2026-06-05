@@ -1,0 +1,11 @@
+version: 1
+updated: 2026-05-18
+terms:
+  - term: portable project data
+    definition: Data that can be checked in, synced, or moved between machines without becoming invalid.
+  - term: machine-local data
+    definition: Paths, tool locations, service URLs, and credentials that only apply to the current computer.
+  - term: staging folder
+    definition: A non-runtime output folder where optimized or generated assets can be reviewed before promotion.
+  - term: handoff manifest
+    definition: Program-readable asset metadata intended for downstream implementation by a developer or coding agent.

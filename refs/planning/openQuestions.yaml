@@ -1,0 +1,15 @@
+version: 1
+updated: 2026-05-18
+open_questions:
+  - id: product-name
+    status: open
+    question: Is the public name Asset Forge or Asset Foundry?
+  - id: hosted-account-first-provider
+    status: open
+    question: Which hosted account provider and production domain should be used first?
+  - id: runtime-optimizer-presets
+    status: open
+    question: Which runtime presets are required first beyond Godot and generic web/Three.js?
+  - id: manifest-format-standard
+    status: open
+    question: Should all handoff manifests standardize on JSON, YAML, or a mixed human/programmatic split?

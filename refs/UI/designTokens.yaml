@@ -1,0 +1,18 @@
+version: 1
+updated: 2026-05-18
+tokens:
+  spacing:
+    compact_gap: 8
+    panel_gap: 12
+    page_padding: 16
+  radius:
+    control: 6
+    panel: 8
+  typography:
+    base_family: system-ui
+    label_weight: 600
+    title_weight: 700
+  intent:
+    primary: "#17706b"
+    neutral_border: "#b9c1c0"
+    panel_background: "#faf8f1"

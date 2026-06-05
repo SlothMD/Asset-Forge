@@ -1,0 +1,8 @@
+# Example environment variables for local development.
+# Do not commit real secrets.
+
+ASSET_FORGE_DEV=1
+ASSET_FORGE_LOG_LEVEL=debug
+ASSET_FORGE_MACHINE_CONFIG_DIR=
+COMFYUI_BASE_URL=
+OLLAMA_BASE_URL=

@@ -458,6 +458,91 @@ struct PathPickerRequest {
     initial_path: String,
 }
 
+#[derive(Debug, Deserialize, Serialize, Clone)]
+#[serde(rename_all = "camelCase")]
+struct AssetNeedEntry {
+    id: String,
+    label: String,
+    category: String,
+    description: String,
+    priority: String,
+    requested_formats: Vec<String>,
+    target_runtime_path: String,
+    status: String,
+    notes: String,
+    updated_at: String,
+}
+
+#[derive(Debug, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct AssetNeedsManifest {
+    schema_version: String,
+    updated_at: String,
+    tool: String,
+    project_name: String,
+    instructions_path: String,
+    needs: BTreeMap<String, AssetNeedEntry>,
+    audit: Vec<HandoffAuditEntry>,
+}
+
+#[derive(Debug, Deserialize, Serialize, Clone)]
+#[serde(rename_all = "camelCase")]
+struct AssetAttachmentEntry {
+    id: String,
+    need_id: String,
+    source_path: String,
+    file_name: String,
+    asset_role: String,
+    target_runtime_path: String,
+    staged_path: String,
+    include_in_game: bool,
+    coder_notes: String,
+    status: String,
+    updated_at: String,
+}
+
+#[derive(Debug, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct AssetAssignmentsManifest {
+    schema_version: String,
+    updated_at: String,
+    tool: String,
+    assignments: BTreeMap<String, AssetAttachmentEntry>,
+    audit: Vec<HandoffAuditEntry>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct AssetNeedUpdate {
+    project_path: String,
+    need: AssetNeedEntry,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct AssetAttachmentRequest {
+    project_path: String,
+    need_id: String,
+    source_path: String,
+    asset_role: String,
+    target_runtime_path: String,
+    include_in_game: bool,
+    coder_notes: String,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct AssetHandoffReadout {
+    asset_forge_folder: String,
+    instructions_path: String,
+    needs_manifest_path: String,
+    assignments_manifest_path: String,
+    coder_handoff_path: String,
+    audit_log_path: String,
+    needs: Vec<AssetNeedEntry>,
+    assignments: Vec<AssetAttachmentEntry>,
+}
+
 fn default_transform_scale() -> f32 {
     1.0
 }
@@ -523,6 +608,247 @@ fn append_project_audit_log(local_folder: &Path, entry: &HandoffAuditEntry) -> R
         .map_err(|error| format!("Could not write audit log {}: {error}", path.display()))
 }
 
+fn asset_handoff_instructions_path(local_folder: &Path) -> PathBuf {
+    asset_forge_refs_dir(local_folder).join("agent-asset-inventory-instructions.md")
+}
+
+fn asset_needs_manifest_path(local_folder: &Path) -> PathBuf {
+    asset_forge_refs_dir(local_folder).join("asset-needs.manifest.json")
+}
+
+fn asset_assignments_manifest_path(local_folder: &Path) -> PathBuf {
+    asset_forge_refs_dir(local_folder).join("asset-assignments.manifest.json")
+}
+
+fn asset_coder_handoff_path(local_folder: &Path) -> PathBuf {
+    asset_forge_refs_dir(local_folder).join("asset-handoff-to-game-agent.md")
+}
+
+fn asset_staging_dir(local_folder: &Path) -> PathBuf {
+    asset_forge_refs_dir(local_folder)
+        .join("staging")
+        .join("assets")
+}
+
+fn read_asset_needs_manifest(
+    local_folder: &Path,
+    project_name: &str,
+) -> Result<AssetNeedsManifest, String> {
+    let path = asset_needs_manifest_path(local_folder);
+    if !path.exists() {
+        return Ok(AssetNeedsManifest {
+            schema_version: SCHEMA_VERSION.to_string(),
+            updated_at: now_isoish(),
+            tool: "asset-handoff".to_string(),
+            project_name: project_name.to_string(),
+            instructions_path: relative_path_string(
+                local_folder,
+                &asset_handoff_instructions_path(local_folder),
+            ),
+            needs: BTreeMap::new(),
+            audit: Vec::new(),
+        });
+    }
+
+    let contents = fs::read_to_string(&path)
+        .map_err(|error| format!("Could not read {}: {error}", path.display()))?;
+    serde_json::from_str(&contents)
+        .map_err(|error| format!("Could not parse {}: {error}", path.display()))
+}
+
+fn write_asset_needs_manifest(
+    local_folder: &Path,
+    manifest: &AssetNeedsManifest,
+) -> Result<(), String> {
+    let path = asset_needs_manifest_path(local_folder);
+    if let Some(parent) = path.parent() {
+        fs::create_dir_all(parent)
+            .map_err(|error| format!("Could not create {}: {error}", parent.display()))?;
+    }
+    let serialized = serde_json::to_string_pretty(manifest)
+        .map_err(|error| format!("Could not serialize asset needs manifest: {error}"))?;
+    fs::write(&path, format!("{serialized}\n"))
+        .map_err(|error| format!("Could not write {}: {error}", path.display()))
+}
+
+fn read_asset_assignments_manifest(
+    local_folder: &Path,
+) -> Result<AssetAssignmentsManifest, String> {
+    let path = asset_assignments_manifest_path(local_folder);
+    if !path.exists() {
+        return Ok(AssetAssignmentsManifest {
+            schema_version: SCHEMA_VERSION.to_string(),
+            updated_at: now_isoish(),
+            tool: "asset-handoff".to_string(),
+            assignments: BTreeMap::new(),
+            audit: Vec::new(),
+        });
+    }
+
+    let contents = fs::read_to_string(&path)
+        .map_err(|error| format!("Could not read {}: {error}", path.display()))?;
+    serde_json::from_str(&contents)
+        .map_err(|error| format!("Could not parse {}: {error}", path.display()))
+}
+
+fn write_asset_assignments_manifest(
+    local_folder: &Path,
+    manifest: &AssetAssignmentsManifest,
+) -> Result<(), String> {
+    let path = asset_assignments_manifest_path(local_folder);
+    if let Some(parent) = path.parent() {
+        fs::create_dir_all(parent)
+            .map_err(|error| format!("Could not create {}: {error}", parent.display()))?;
+    }
+    let serialized = serde_json::to_string_pretty(manifest)
+        .map_err(|error| format!("Could not serialize asset assignments manifest: {error}"))?;
+    fs::write(&path, format!("{serialized}\n"))
+        .map_err(|error| format!("Could not write {}: {error}", path.display()))
+}
+
+fn write_asset_handoff_instructions(local_folder: &Path) -> Result<(), String> {
+    let path = asset_handoff_instructions_path(local_folder);
+    if path.exists() {
+        return Ok(());
+    }
+    if let Some(parent) = path.parent() {
+        fs::create_dir_all(parent)
+            .map_err(|error| format!("Could not create {}: {error}", parent.display()))?;
+    }
+    let contents = r#"# Asset Forge Asset Inventory Instructions
+
+Use this file to hand work from the game coding agent to Asset Forge.
+
+When a game implementation needs art, audio, models, icons, UI components, or other runtime assets:
+
+1. Add or update entries in `refs/assetForge/asset-needs.manifest.json`.
+2. Keep each need generic and implementation-oriented: describe what the asset must communicate, where it will be used, expected file types, approximate dimensions or technical constraints, and target runtime path if known.
+3. Do not hard-code temporary local source paths in runtime content. Put source paths and local processing notes in Asset Forge assignment manifests instead.
+4. After Asset Forge attaches or processes assets, read `refs/assetForge/asset-assignments.manifest.json` and `refs/assetForge/asset-handoff-to-game-agent.md`.
+5. Pull only approved runtime assets into game code/content, then update game-side refs with any implementation decisions.
+
+Asset Forge may create project-local files under `refs/assetForge`, and may copy staged or included runtime assets into the game project when an assignment explicitly requests that.
+"#;
+    fs::write(&path, contents)
+        .map_err(|error| format!("Could not write {}: {error}", path.display()))
+}
+
+fn write_asset_coder_handoff(
+    local_folder: &Path,
+    needs: &AssetNeedsManifest,
+    assignments: &AssetAssignmentsManifest,
+) -> Result<(), String> {
+    let path = asset_coder_handoff_path(local_folder);
+    if let Some(parent) = path.parent() {
+        fs::create_dir_all(parent)
+            .map_err(|error| format!("Could not create {}: {error}", parent.display()))?;
+    }
+
+    let mut markdown = String::new();
+    markdown.push_str("# Asset Forge Handoff To Game Agent\n\n");
+    markdown.push_str(&format!("Updated: {}\n\n", now_isoish()));
+    markdown.push_str("## Asset Needs\n\n");
+    if needs.needs.is_empty() {
+        markdown.push_str("No asset needs recorded yet.\n\n");
+    } else {
+        for need in needs.needs.values() {
+            markdown.push_str(&format!(
+                "- `{}`: {} [{} / {}]\n  - Description: {}\n  - Formats: {}\n  - Target: {}\n  - Notes: {}\n",
+                need.id,
+                need.label,
+                need.category,
+                need.priority,
+                need.description,
+                if need.requested_formats.is_empty() {
+                    "unspecified".to_string()
+                } else {
+                    need.requested_formats.join(", ")
+                },
+                if need.target_runtime_path.trim().is_empty() {
+                    "unspecified"
+                } else {
+                    need.target_runtime_path.as_str()
+                },
+                if need.notes.trim().is_empty() {
+                    "none"
+                } else {
+                    need.notes.as_str()
+                }
+            ));
+        }
+        markdown.push('\n');
+    }
+
+    markdown.push_str("## Asset Assignments\n\n");
+    if assignments.assignments.is_empty() {
+        markdown.push_str("No assets attached yet.\n");
+    } else {
+        for assignment in assignments.assignments.values() {
+            markdown.push_str(&format!(
+                "- `{}` for need `{}`\n  - Source: {}\n  - Staged/runtime path: {}\n  - Target runtime path: {}\n  - Role: {}\n  - Include in game: {}\n  - Status: {}\n  - Coder notes: {}\n",
+                assignment.id,
+                assignment.need_id,
+                assignment.source_path,
+                if assignment.staged_path.trim().is_empty() {
+                    "not copied"
+                } else {
+                    assignment.staged_path.as_str()
+                },
+                if assignment.target_runtime_path.trim().is_empty() {
+                    "unspecified"
+                } else {
+                    assignment.target_runtime_path.as_str()
+                },
+                assignment.asset_role,
+                assignment.include_in_game,
+                assignment.status,
+                if assignment.coder_notes.trim().is_empty() {
+                    "none"
+                } else {
+                    assignment.coder_notes.as_str()
+                }
+            ));
+        }
+    }
+
+    fs::write(&path, markdown)
+        .map_err(|error| format!("Could not write {}: {error}", path.display()))
+}
+
+fn asset_handoff_readout(
+    local_folder: &Path,
+    project_name: &str,
+) -> Result<AssetHandoffReadout, String> {
+    ensure_asset_forge_refs(local_folder)?;
+    write_asset_handoff_instructions(local_folder)?;
+    let needs = read_asset_needs_manifest(local_folder, project_name)?;
+    let assignments = read_asset_assignments_manifest(local_folder)?;
+    write_asset_coder_handoff(local_folder, &needs, &assignments)?;
+
+    Ok(AssetHandoffReadout {
+        asset_forge_folder: asset_forge_refs_dir(local_folder)
+            .to_string_lossy()
+            .to_string(),
+        instructions_path: asset_handoff_instructions_path(local_folder)
+            .to_string_lossy()
+            .to_string(),
+        needs_manifest_path: asset_needs_manifest_path(local_folder)
+            .to_string_lossy()
+            .to_string(),
+        assignments_manifest_path: asset_assignments_manifest_path(local_folder)
+            .to_string_lossy()
+            .to_string(),
+        coder_handoff_path: asset_coder_handoff_path(local_folder)
+            .to_string_lossy()
+            .to_string(),
+        audit_log_path: project_audit_log_path(local_folder)
+            .to_string_lossy()
+            .to_string(),
+        needs: needs.needs.values().cloned().collect(),
+        assignments: assignments.assignments.values().cloned().collect(),
+    })
+}
+
 fn read_ship_model_manifest(path: &Path) -> Result<ShipModelOrientationManifest, String> {
     if !path.exists() {
         return Ok(ShipModelOrientationManifest {
@@ -571,7 +897,8 @@ fn collect_glb_files(root: &Path, files: &mut Vec<PathBuf>) -> Result<(), String
     for entry in fs::read_dir(root)
         .map_err(|error| format!("Could not read model directory {}: {error}", root.display()))?
     {
-        let entry = entry.map_err(|error| format!("Could not read model directory entry: {error}"))?;
+        let entry =
+            entry.map_err(|error| format!("Could not read model directory entry: {error}"))?;
         let path = entry.path();
         if path.is_dir() {
             collect_glb_files(&path, files)?;
@@ -592,11 +919,11 @@ fn collect_image_files(root: &Path, files: &mut Vec<PathBuf>) -> Result<(), Stri
         return Ok(());
     }
 
-    for entry in fs::read_dir(root)
-        .map_err(|error| format!("Could not read {}: {error}", root.display()))?
+    for entry in
+        fs::read_dir(root).map_err(|error| format!("Could not read {}: {error}", root.display()))?
     {
-        let entry =
-            entry.map_err(|error| format!("Could not read entry in {}: {error}", root.display()))?;
+        let entry = entry
+            .map_err(|error| format!("Could not read entry in {}: {error}", root.display()))?;
         let path = entry.path();
         if path.is_dir() {
             collect_image_files(&path, files)?;
@@ -654,7 +981,10 @@ fn read_source_orientation_manifest(
     manifest_path: &Path,
 ) -> Result<SourceImageOrientationManifest, String> {
     if !manifest_path.exists() {
-        return Ok(default_source_orientation_manifest(source_folder, manifest_path));
+        return Ok(default_source_orientation_manifest(
+            source_folder,
+            manifest_path,
+        ));
     }
 
     let contents = fs::read_to_string(manifest_path)
@@ -671,8 +1001,9 @@ fn write_source_orientation_manifest(
         fs::create_dir_all(parent)
             .map_err(|error| format!("Could not create {}: {error}", parent.display()))?;
     }
-    let serialized = serde_json::to_string_pretty(manifest)
-        .map_err(|error| format!("Could not serialize source image orientation manifest: {error}"))?;
+    let serialized = serde_json::to_string_pretty(manifest).map_err(|error| {
+        format!("Could not serialize source image orientation manifest: {error}")
+    })?;
     fs::write(manifest_path, format!("{serialized}\n"))
         .map_err(|error| format!("Could not write {}: {error}", manifest_path.display()))
 }
@@ -743,8 +1074,7 @@ fn image_opportunities(
     if !width.is_power_of_two() || !height.is_power_of_two() {
         opportunities.push("non-power-of-two-dimensions".to_string());
     }
-    if extension == "png" && size > 2_500_000 && image_type != "normal" && image_type != "ui-icon"
-    {
+    if extension == "png" && size > 2_500_000 && image_type != "normal" && image_type != "ui-icon" {
         opportunities.push("png-large-consider-jpeg".to_string());
     }
     if image_type == "unknown" {
@@ -1256,7 +1586,8 @@ fn default_machine_config() -> MachineConfig {
                 executable_path: String::new(),
                 url: String::new(),
                 working_directory: String::new(),
-                notes: "Optional automation target for model transforms and optimization.".to_string(),
+                notes: "Optional automation target for model transforms and optimization."
+                    .to_string(),
                 enabled: false,
             },
             MachineToolConfig {
@@ -1329,7 +1660,11 @@ fn powershell_single_quoted(value: &str) -> String {
 
 fn powershell_executable() -> String {
     Command::new("pwsh")
-        .args(["-NoProfile", "-Command", "$PSVersionTable.PSVersion.ToString()"])
+        .args([
+            "-NoProfile",
+            "-Command",
+            "$PSVersionTable.PSVersion.ToString()",
+        ])
         .output()
         .ok()
         .filter(|output| output.status.success())
@@ -1402,12 +1737,11 @@ fn save_ship_model_orientation(
         tool: "model-orientation".to_string(),
         action: "saved-orientation".to_string(),
         target: update.model_path.clone(),
-        summary: "Updated GLB model orientation metadata for downstream runtime/import tooling.".to_string(),
+        summary: "Updated GLB model orientation metadata for downstream runtime/import tooling."
+            .to_string(),
     };
     manifest.updated_at = now;
-    manifest
-        .models
-        .insert(update.model_path, update.transform);
+    manifest.models.insert(update.model_path, update.transform);
     manifest.audit.push(audit.clone());
     write_ship_model_manifest(&manifest_path, &manifest)?;
     append_project_audit_log(&local_folder, &audit)?;
@@ -1540,10 +1874,17 @@ fn optimize_image_assets(request: ImageOptimizeRequest) -> Result<ImageOptimizeR
     for path in files {
         let relative = path.strip_prefix(&source_folder).unwrap_or(&path);
         let mut output_path = staging_folder.join(relative);
-        output_path.set_extension(if output_format == "jpeg" { "jpg" } else { &output_format });
+        output_path.set_extension(if output_format == "jpeg" {
+            "jpg"
+        } else {
+            &output_format
+        });
         if let Some(parent) = output_path.parent() {
             fs::create_dir_all(parent).map_err(|error| {
-                format!("Could not create output folder {}: {error}", parent.display())
+                format!(
+                    "Could not create output folder {}: {error}",
+                    parent.display()
+                )
             })?;
         }
 
@@ -1681,18 +2022,22 @@ fn optimize_model_assets(request: ModelOptimizeRequest) -> Result<ModelOptimizeR
         }
         if let Some(parent) = output_path.parent() {
             fs::create_dir_all(parent).map_err(|error| {
-                format!("Could not create output folder {}: {error}", parent.display())
+                format!(
+                    "Could not create output folder {}: {error}",
+                    parent.display()
+                )
             })?;
         }
 
         let source_metadata = fs::metadata(&path)
             .map_err(|error| format!("Could not read metadata for {}: {error}", path.display()))?;
         let source_triangles = inspect_model_triangles(&path);
-        let simplify_ratio = if request.simplify && request.target_triangles > 0 && source_triangles > 0 {
-            ((request.target_triangles as f32) / (source_triangles as f32)).clamp(0.01, 1.0)
-        } else {
-            0.0
-        };
+        let simplify_ratio =
+            if request.simplify && request.target_triangles > 0 && source_triangles > 0 {
+                ((request.target_triangles as f32) / (source_triangles as f32)).clamp(0.01, 1.0)
+            } else {
+                0.0
+            };
 
         let mut args = vec![
             "--yes".to_string(),
@@ -1705,9 +2050,7 @@ fn optimize_model_assets(request: ModelOptimizeRequest) -> Result<ModelOptimizeR
             args.push("--compress".to_string());
             args.push(compression.clone());
         }
-        if !texture_compress.is_empty()
-            && texture_compress != "none"
-            && texture_compress != "false"
+        if !texture_compress.is_empty() && texture_compress != "none" && texture_compress != "false"
         {
             args.push("--texture-compress".to_string());
             args.push(texture_compress.clone());
@@ -1824,7 +2167,10 @@ fn list_source_image_orientations(
         })
         .map(|mut entry| {
             if entry.absolute_path.trim().is_empty() {
-                entry.absolute_path = source_folder.join(&entry.relative_path).to_string_lossy().to_string();
+                entry.absolute_path = source_folder
+                    .join(&entry.relative_path)
+                    .to_string_lossy()
+                    .to_string();
             }
             entry
         })
@@ -1872,7 +2218,9 @@ fn save_source_image_orientation(
         tool: "source-image-orientation".to_string(),
         action: "saved-orientation".to_string(),
         target: update.relative_path,
-        summary: "Updated source image orientation metadata for downstream tools and game integration.".to_string(),
+        summary:
+            "Updated source image orientation metadata for downstream tools and game integration."
+                .to_string(),
     };
     manifest.audit.push(audit.clone());
     write_source_orientation_manifest(&manifest_path, &manifest)?;
@@ -1903,6 +2251,162 @@ fn get_machine_config() -> Result<MachineConfigReadout, String> {
 #[tauri::command]
 fn save_machine_config(config: MachineConfig) -> Result<MachineConfigReadout, String> {
     write_machine_config(config)
+}
+
+#[tauri::command]
+fn initialize_asset_handoff(project_path: String) -> Result<AssetHandoffReadout, String> {
+    let project_path = PathBuf::from(project_path);
+    let local_folder = local_folder_for_project(&project_path)?;
+    let project = read_project(&project_path)?;
+    ensure_asset_forge_refs(&local_folder)?;
+    write_asset_handoff_instructions(&local_folder)?;
+
+    let mut needs = read_asset_needs_manifest(&local_folder, &project.name)?;
+    let mut assignments = read_asset_assignments_manifest(&local_folder)?;
+    let now = now_isoish();
+    let audit = HandoffAuditEntry {
+        timestamp: now.clone(),
+        tool: "asset-handoff".to_string(),
+        action: "initialized-handoff".to_string(),
+        target: asset_forge_refs_dir(&local_folder)
+            .to_string_lossy()
+            .to_string(),
+        summary: "Initialized generic Asset Forge handoff files for the linked game project."
+            .to_string(),
+    };
+    needs.updated_at = now.clone();
+    needs.project_name = project.name.clone();
+    needs.audit.push(audit.clone());
+    assignments.updated_at = now;
+    assignments.audit.push(audit.clone());
+    write_asset_needs_manifest(&local_folder, &needs)?;
+    write_asset_assignments_manifest(&local_folder, &assignments)?;
+    write_asset_coder_handoff(&local_folder, &needs, &assignments)?;
+    append_project_audit_log(&local_folder, &audit)?;
+    asset_handoff_readout(&local_folder, &project.name)
+}
+
+#[tauri::command]
+fn read_asset_handoff(project_path: String) -> Result<AssetHandoffReadout, String> {
+    let project_path = PathBuf::from(project_path);
+    let local_folder = local_folder_for_project(&project_path)?;
+    let project = read_project(&project_path)?;
+    asset_handoff_readout(&local_folder, &project.name)
+}
+
+#[tauri::command]
+fn save_asset_need(update: AssetNeedUpdate) -> Result<AssetHandoffReadout, String> {
+    let project_path = PathBuf::from(&update.project_path);
+    let local_folder = local_folder_for_project(&project_path)?;
+    let project = read_project(&project_path)?;
+    ensure_asset_forge_refs(&local_folder)?;
+    let mut needs = read_asset_needs_manifest(&local_folder, &project.name)?;
+    let assignments = read_asset_assignments_manifest(&local_folder)?;
+    let now = now_isoish();
+    let mut need = update.need;
+    if need.id.trim().is_empty() {
+        return Err("Asset need id is required.".to_string());
+    }
+    need.updated_at = now.clone();
+    let audit = HandoffAuditEntry {
+        timestamp: now.clone(),
+        tool: "asset-handoff".to_string(),
+        action: "saved-asset-need".to_string(),
+        target: need.id.clone(),
+        summary: format!("Saved asset need '{}'.", need.label),
+    };
+    needs.updated_at = now;
+    needs.needs.insert(need.id.clone(), need);
+    needs.audit.push(audit.clone());
+    write_asset_needs_manifest(&local_folder, &needs)?;
+    write_asset_coder_handoff(&local_folder, &needs, &assignments)?;
+    append_project_audit_log(&local_folder, &audit)?;
+    asset_handoff_readout(&local_folder, &project.name)
+}
+
+#[tauri::command]
+fn attach_asset_to_need(request: AssetAttachmentRequest) -> Result<AssetHandoffReadout, String> {
+    let project_path = PathBuf::from(&request.project_path);
+    let local_folder = local_folder_for_project(&project_path)?;
+    let project = read_project(&project_path)?;
+    ensure_asset_forge_refs(&local_folder)?;
+    let needs = read_asset_needs_manifest(&local_folder, &project.name)?;
+    if !needs.needs.contains_key(&request.need_id) {
+        return Err(format!(
+            "No asset need found with id '{}'.",
+            request.need_id
+        ));
+    }
+
+    let source_path = PathBuf::from(request.source_path.trim());
+    if !source_path.exists() {
+        return Err(format!(
+            "Asset source file does not exist: {}",
+            source_path.display()
+        ));
+    }
+
+    let file_name = source_path
+        .file_name()
+        .map(|name| name.to_string_lossy().to_string())
+        .ok_or_else(|| "Asset source path must point to a file.".to_string())?;
+    let now = now_isoish();
+    let assignment_id = format!("{}-{}", request.need_id, now_millis());
+    let staged_path = if request.include_in_game {
+        let target = request.target_runtime_path.trim();
+        let destination = if target.is_empty() {
+            asset_staging_dir(&local_folder).join(&file_name)
+        } else {
+            local_folder.join(target)
+        };
+        if let Some(parent) = destination.parent() {
+            fs::create_dir_all(parent)
+                .map_err(|error| format!("Could not create {}: {error}", parent.display()))?;
+        }
+        fs::copy(&source_path, &destination).map_err(|error| {
+            format!(
+                "Could not copy {} to {}: {error}",
+                source_path.display(),
+                destination.display()
+            )
+        })?;
+        destination.to_string_lossy().to_string()
+    } else {
+        String::new()
+    };
+
+    let mut assignments = read_asset_assignments_manifest(&local_folder)?;
+    let entry = AssetAttachmentEntry {
+        id: assignment_id.clone(),
+        need_id: request.need_id.clone(),
+        source_path: source_path.to_string_lossy().to_string(),
+        file_name,
+        asset_role: request.asset_role,
+        target_runtime_path: request.target_runtime_path,
+        staged_path,
+        include_in_game: request.include_in_game,
+        coder_notes: request.coder_notes,
+        status: if request.include_in_game {
+            "copied-for-review".to_string()
+        } else {
+            "referenced".to_string()
+        },
+        updated_at: now.clone(),
+    };
+    let audit = HandoffAuditEntry {
+        timestamp: now.clone(),
+        tool: "asset-handoff".to_string(),
+        action: "attached-asset".to_string(),
+        target: assignment_id,
+        summary: format!("Attached asset source to need '{}'.", request.need_id),
+    };
+    assignments.updated_at = now;
+    assignments.assignments.insert(entry.id.clone(), entry);
+    assignments.audit.push(audit.clone());
+    write_asset_assignments_manifest(&local_folder, &assignments)?;
+    write_asset_coder_handoff(&local_folder, &needs, &assignments)?;
+    append_project_audit_log(&local_folder, &audit)?;
+    asset_handoff_readout(&local_folder, &project.name)
 }
 
 #[tauri::command]
@@ -1954,7 +2458,9 @@ fn pick_path(request: PathPickerRequest) -> Result<Option<String>, String> {
 }
 
 #[tauri::command]
-fn run_trellis_batch_conversion(request: TrellisBatchRequest) -> Result<TrellisBatchResult, String> {
+fn run_trellis_batch_conversion(
+    request: TrellisBatchRequest,
+) -> Result<TrellisBatchResult, String> {
     let script_path = asset_forge_root()?
         .join("tools")
         .join("Convert-Trellis2Batch.ps1");
@@ -2005,7 +2511,10 @@ fn run_trellis_batch_conversion(request: TrellisBatchRequest) -> Result<TrellisB
         "-ComfyOutputDir".to_string(),
         comfy_output_folder.to_string_lossy().to_string(),
         "-TargetFaceCount".to_string(),
-        request.target_face_count.clamp(1_000, 1_000_000).to_string(),
+        request
+            .target_face_count
+            .clamp(1_000, 1_000_000)
+            .to_string(),
         "-TextureSize".to_string(),
         request.texture_size.clamp(256, 4096).to_string(),
     ];
@@ -2086,6 +2595,10 @@ pub fn run() {
             load_source_image_preview,
             get_machine_config,
             save_machine_config,
+            initialize_asset_handoff,
+            read_asset_handoff,
+            save_asset_need,
+            attach_asset_to_need,
             pick_path,
             run_trellis_batch_conversion,
             close_app

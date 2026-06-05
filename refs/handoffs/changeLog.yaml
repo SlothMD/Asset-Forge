@@ -1,0 +1,17 @@
+version: 1
+updated: 2026-05-18
+changes:
+  - date: 2026-05-18
+    summary: Expanded refs structure to cover planning, architecture, product, implementation, handoffs, testing, UI, data, integrations, and operations.
+    refs:
+      - refs/project.yaml
+      - refs/agents.yaml
+  - date: 2026-06-04
+    summary: Added generic Asset Handoff tool and manifests for project-agnostic asset need/assignment exchange.
+    refs:
+      - apps/desktop/src/main.tsx
+      - apps/desktop/src-tauri/src/lib.rs
+      - docs/generic-asset-handoff.md
+      - docs/handoff-manifests.md
+      - refs/data/assetManifest.schema.yaml
+      - refs/planning/todos.yaml

@@ -1,0 +1,23 @@
+version: 1
+updated: 2026-05-18
+risks:
+  - id: external-tool-drift
+    status: open
+    severity: high
+    summary: External tools such as Blender, ComfyUI, ImageMagick, and glTF tooling may change CLI behavior or file compatibility.
+    mitigation: Keep tool versions in machine profiles and write explicit integration presets.
+  - id: runtime-format-mismatch
+    status: open
+    severity: high
+    summary: Optimized assets can be technically valid but incompatible with a target runtime such as Godot.
+    mitigation: Add per-runtime optimizer presets and validation commands before promotion.
+  - id: refs-sprawl
+    status: open
+    severity: medium
+    summary: refs can become noisy if files are duplicated or not kept current.
+    mitigation: Keep each refs file scoped, update handoffs after implementation, and move architecture maps into architecture.
+  - id: long-running-ui-lockup
+    status: open
+    severity: medium
+    summary: Batch conversion and optimization can appear stalled without progress, cancellation, or notifications.
+    mitigation: Add progress reporting, screen locking or background jobs, and notification logs.

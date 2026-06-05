@@ -1,0 +1,13 @@
+version: 1
+updated: 2026-05-18
+integration:
+  id: blender
+  status: planned
+  mode: local-executable
+  machine_config_fields:
+    - executablePath
+    - enabled
+  expected_uses:
+    - model transforms
+    - hardpoint and attachment-node authoring
+    - runtime export

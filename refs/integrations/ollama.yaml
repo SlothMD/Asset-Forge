@@ -1,0 +1,13 @@
+version: 1
+updated: 2026-05-18
+integration:
+  id: ollama
+  status: planned
+  mode: local-service
+  machine_config_fields:
+    - baseUrl
+    - model
+    - enabled
+  expected_uses:
+    - local prompt assistance
+    - metadata cleanup

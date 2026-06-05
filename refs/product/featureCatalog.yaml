@@ -1,0 +1,27 @@
+version: 1
+updated: 2026-05-18
+features:
+  - id: project-launcher
+    status: partial
+    summary: Create/open projects and manage external project links.
+  - id: machine-config
+    status: partial
+    summary: Store this-machine tool paths and local service details.
+  - id: source-image-orientation
+    status: partial
+    summary: Mark image orientation and write handoff manifests.
+  - id: model-orientation
+    status: partial
+    summary: Mark GLB orientation and write transform manifests.
+  - id: image-optimization
+    status: partial
+    summary: Scan and optimize image assets into staging.
+  - id: model-optimization
+    status: partial
+    summary: Optimize GLB assets to staging and review original versus optimized output.
+  - id: card-forge
+    status: planned
+    summary: Generate card layouts from structured data.
+  - id: token-forge
+    status: planned
+    summary: Generate 2D token/counter sheets from structured data.

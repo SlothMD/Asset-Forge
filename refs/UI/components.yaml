@@ -1,0 +1,15 @@
+version: 1
+updated: 2026-05-18
+components:
+  path_input:
+    rules:
+      - Include a small folder icon button beside editable path/file fields.
+      - Browse should default to current value or last selected folder.
+  preview_panel:
+    rules:
+      - Center media in the available pane.
+      - Leave enough margin to inspect full asset bounds.
+      - Avoid forcing page scroll for common review workflows.
+  tool_header:
+    rules:
+      - Keep navigation, settings, and close actions aligned and visually consistent.

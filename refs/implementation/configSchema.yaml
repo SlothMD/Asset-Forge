@@ -1,0 +1,15 @@
+version: 1
+updated: 2026-05-18
+schemas:
+  machine_config:
+    status: draft
+    purpose: Store this-computer tool paths, local service URLs, and capability flags.
+    must_not_store:
+      - provider secrets
+      - API keys
+      - OAuth refresh tokens
+  project_config:
+    status: draft
+    purpose: Store portable project metadata and provider links.
+    canonical_file: project.json
+    allowed_machine_specific_values: []

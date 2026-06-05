@@ -1,0 +1,18 @@
+version: 1
+updated: 2026-05-18
+smoke_tests:
+  - id: launch-desktop
+    status: draft
+    summary: Start the desktop app and open the launcher.
+  - id: open-project
+    status: draft
+    summary: Open an existing project and verify project detail state renders.
+  - id: source-image-orientation
+    status: draft
+    summary: Load a folder of PNG assets, save orientation, and verify manifest output.
+  - id: model-orientation
+    status: draft
+    summary: Load a folder of GLB assets, save orientation, and verify manifest output.
+  - id: model-optimization
+    status: draft
+    summary: Optimize a small GLB fixture to staging and verify review can load both source and output.

@@ -1,0 +1,23 @@
+version: 1
+updated: 2026-05-18
+schemas:
+  orientation:
+    fields:
+      - yawDegrees
+      - pitchDegrees
+      - rollDegrees
+      - scale
+  source_image_orientation:
+    fields:
+      - rotateDegrees
+      - flipHorizontal
+      - flipVertical
+      - role
+      - notes
+  optimization:
+    fields:
+      - sourceSizeBytes
+      - outputSizeBytes
+      - sourceTriangles
+      - targetTriangles
+      - simplifyRatio

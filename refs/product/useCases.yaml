@@ -1,0 +1,13 @@
+version: 1
+updated: 2026-05-18
+use_cases:
+  - id: orient-source-images
+    summary: Mark source token orientation once and reuse that data for 2D runtime tokens and 3D conversion.
+  - id: orient-glb-models
+    summary: Review GLB models and save yaw, pitch, roll, and scale metadata for runtime/import tooling.
+  - id: optimize-images
+    summary: Scan image folders, identify optimization opportunities, and copy optimized files to staging.
+  - id: optimize-models
+    summary: Scan GLB folders, target triangle budgets, optimize to staging, and review before promotion.
+  - id: handoff-to-game
+    summary: Generate manifests and logs a developer or coding agent can consume in a downstream game repo.

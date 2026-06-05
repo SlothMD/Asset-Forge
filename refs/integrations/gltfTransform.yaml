@@ -1,0 +1,15 @@
+version: 1
+updated: 2026-05-18
+integration:
+  id: gltf-transform
+  status: partial
+  mode: local-cli
+  current_invocation: npx --yes @gltf-transform/cli
+  expected_uses:
+    - GLB inspect
+    - GLB optimize
+    - dequantize for Godot compatibility
+  runtime_notes:
+    godot:
+      - Avoid EXT_meshopt_compression for runtime GLBs.
+      - Remove KHR_mesh_quantization before promotion.

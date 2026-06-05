@@ -58,6 +58,7 @@ type ActiveTool =
   | "source-image-orientation"
   | "image-optimization"
   | "trellis-batch"
+  | "asset-handoff"
   | null;
 
 type ShipModelTransform = {
@@ -205,6 +206,44 @@ type MachineConfigReadout = {
   config: MachineConfig;
 };
 
+type AssetNeedEntry = {
+  id: string;
+  label: string;
+  category: string;
+  description: string;
+  priority: string;
+  requestedFormats: string[];
+  targetRuntimePath: string;
+  status: string;
+  notes: string;
+  updatedAt: string;
+};
+
+type AssetAttachmentEntry = {
+  id: string;
+  needId: string;
+  sourcePath: string;
+  fileName: string;
+  assetRole: string;
+  targetRuntimePath: string;
+  stagedPath: string;
+  includeInGame: boolean;
+  coderNotes: string;
+  status: string;
+  updatedAt: string;
+};
+
+type AssetHandoffReadout = {
+  assetForgeFolder: string;
+  instructionsPath: string;
+  needsManifestPath: string;
+  assignmentsManifestPath: string;
+  coderHandoffPath: string;
+  auditLogPath: string;
+  needs: AssetNeedEntry[];
+  assignments: AssetAttachmentEntry[];
+};
+
 const fallbackProjectKey = "asset-forge-projects";
 const fallbackProjectFilePrefix = "asset-forge-project-file:";
 const lastPathPickerFolderKey = "asset-forge-last-path-picker-folder";
@@ -286,6 +325,34 @@ function writeFallbackProjectFile(project: ProjectFile) {
     `${fallbackProjectFilePrefix}${project.projectId}`,
     JSON.stringify(project)
   );
+}
+
+function emptyAssetHandoffReadout(message: string): AssetHandoffReadout {
+  return {
+    assetForgeFolder: message,
+    instructionsPath: message,
+    needsManifestPath: message,
+    assignmentsManifestPath: message,
+    coderHandoffPath: message,
+    auditLogPath: message,
+    needs: [],
+    assignments: []
+  };
+}
+
+function emptyAssetNeed(): AssetNeedEntry {
+  return {
+    id: "",
+    label: "",
+    category: "",
+    description: "",
+    priority: "medium",
+    requestedFormats: [],
+    targetRuntimePath: "",
+    status: "needed",
+    notes: "",
+    updatedAt: ""
+  };
 }
 
 const projectApi = {
@@ -601,6 +668,48 @@ const projectApi = {
     }
 
     return { path: "Desktop runtime required", config };
+  },
+
+  async initializeAssetHandoff(projectPath: string): Promise<AssetHandoffReadout> {
+    if (isTauriRuntime()) {
+      return invoke<AssetHandoffReadout>("initialize_asset_handoff", { projectPath });
+    }
+
+    return emptyAssetHandoffReadout("Desktop runtime required");
+  },
+
+  async readAssetHandoff(projectPath: string): Promise<AssetHandoffReadout> {
+    if (isTauriRuntime()) {
+      return invoke<AssetHandoffReadout>("read_asset_handoff", { projectPath });
+    }
+
+    return emptyAssetHandoffReadout("Desktop runtime required");
+  },
+
+  async saveAssetNeed(projectPath: string, need: AssetNeedEntry): Promise<AssetHandoffReadout> {
+    if (isTauriRuntime()) {
+      return invoke<AssetHandoffReadout>("save_asset_need", {
+        update: { projectPath, need }
+      });
+    }
+
+    return emptyAssetHandoffReadout("Desktop runtime required");
+  },
+
+  async attachAssetToNeed(request: {
+    projectPath: string;
+    needId: string;
+    sourcePath: string;
+    assetRole: string;
+    targetRuntimePath: string;
+    includeInGame: boolean;
+    coderNotes: string;
+  }): Promise<AssetHandoffReadout> {
+    if (isTauriRuntime()) {
+      return invoke<AssetHandoffReadout>("attach_asset_to_need", { request });
+    }
+
+    return emptyAssetHandoffReadout("Desktop runtime required");
   },
 
   async pickPath(
@@ -985,6 +1094,8 @@ function App() {
                             ? "image-optimization"
                             : event.target.value === "trellis-batch"
                               ? "trellis-batch"
+                              : event.target.value === "asset-handoff"
+                                ? "asset-handoff"
                               : null
                     )
                   }
@@ -995,6 +1106,7 @@ function App() {
                   <option value="source-image-orientation">Source Image Orientation</option>
                   <option value="image-optimization">Image Optimization</option>
                   <option value="trellis-batch">Trellis Batch</option>
+                  <option value="asset-handoff">Asset Handoff</option>
                   <option value="steam-launch-prep">Steam Launch Prep</option>
                 </select>
               </div>
@@ -1014,6 +1126,8 @@ function App() {
                   <ImageOptimizationTool project={activeProject.project} />
                 ) : activeTool === "trellis-batch" ? (
                   <TrellisBatchTool project={activeProject.project} />
+                ) : activeTool === "asset-handoff" ? (
+                  <AssetHandoffTool project={activeProject.project} />
                 ) : (
                   <div className="tool-empty">
                     <h3>Tools</h3>
@@ -1211,6 +1325,369 @@ function App() {
 
       {isSettingsOpen ? <SettingsModal onClose={() => setIsSettingsOpen(false)} /> : null}
     </main>
+  );
+}
+
+function AssetHandoffTool({ project }: { project: ProjectSummary }) {
+  const [handoff, setHandoff] = useState<AssetHandoffReadout | null>(null);
+  const [selectedNeedId, setSelectedNeedId] = useState("");
+  const [needDraft, setNeedDraft] = useState<AssetNeedEntry>(emptyAssetNeed());
+  const [sourcePath, setSourcePath] = useState("");
+  const [assetRole, setAssetRole] = useState("");
+  const [targetRuntimePath, setTargetRuntimePath] = useState("");
+  const [includeInGame, setIncludeInGame] = useState(false);
+  const [coderNotes, setCoderNotes] = useState("");
+  const [status, setStatus] = useState("");
+  const [isBusy, setIsBusy] = useState(false);
+
+  async function refresh() {
+    setStatus("");
+    const next = await projectApi.readAssetHandoff(project.path);
+    setHandoff(next);
+    if (!selectedNeedId && next.needs[0]) {
+      selectNeed(next.needs[0], next);
+    }
+  }
+
+  useEffect(() => {
+    refresh().catch((caught: unknown) =>
+      setStatus(caught instanceof Error ? caught.message : String(caught))
+    );
+  }, [project.path]);
+
+  function selectNeed(need: AssetNeedEntry, nextHandoff = handoff) {
+    setSelectedNeedId(need.id);
+    setNeedDraft({ ...need });
+    const latestAssignment = nextHandoff?.assignments.find((assignment) => assignment.needId === need.id);
+    setAssetRole(latestAssignment?.assetRole ?? need.category);
+    setTargetRuntimePath(latestAssignment?.targetRuntimePath || need.targetRuntimePath);
+  }
+
+  function newNeed() {
+    setSelectedNeedId("");
+    setNeedDraft(emptyAssetNeed());
+    setSourcePath("");
+    setAssetRole("");
+    setTargetRuntimePath("");
+    setCoderNotes("");
+    setIncludeInGame(false);
+  }
+
+  function updateNeed<K extends keyof AssetNeedEntry>(key: K, value: AssetNeedEntry[K]) {
+    setNeedDraft((current) => ({ ...current, [key]: value }));
+  }
+
+  function normalizeNeedId(value: string) {
+    return value
+      .trim()
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, "-")
+      .replace(/^-+|-+$/g, "");
+  }
+
+  async function initialize() {
+    setIsBusy(true);
+    setStatus("");
+    try {
+      const next = await projectApi.initializeAssetHandoff(project.path);
+      setHandoff(next);
+      setStatus("Initialized Asset Forge handoff files in the linked project.");
+    } catch (caught) {
+      setStatus(caught instanceof Error ? caught.message : String(caught));
+    } finally {
+      setIsBusy(false);
+    }
+  }
+
+  async function saveNeed() {
+    const id = normalizeNeedId(needDraft.id || needDraft.label);
+    if (!id) {
+      setStatus("Need id or label is required.");
+      return;
+    }
+
+    setIsBusy(true);
+    setStatus("");
+    try {
+      const next = await projectApi.saveAssetNeed(project.path, {
+        ...needDraft,
+        id,
+        requestedFormats: needDraft.requestedFormats.map((value) => value.trim()).filter(Boolean)
+      });
+      setHandoff(next);
+      const saved = next.needs.find((need) => need.id === id);
+      if (saved) selectNeed(saved, next);
+      setStatus(`Saved asset need ${id}.`);
+    } catch (caught) {
+      setStatus(caught instanceof Error ? caught.message : String(caught));
+    } finally {
+      setIsBusy(false);
+    }
+  }
+
+  async function attachAsset() {
+    const needId = selectedNeedId || normalizeNeedId(needDraft.id || needDraft.label);
+    if (!needId) {
+      setStatus("Select or save an asset need before attaching an asset.");
+      return;
+    }
+    if (!sourcePath.trim()) {
+      setStatus("Source asset path is required.");
+      return;
+    }
+
+    setIsBusy(true);
+    setStatus("");
+    try {
+      const next = await projectApi.attachAssetToNeed({
+        projectPath: project.path,
+        needId,
+        sourcePath,
+        assetRole,
+        targetRuntimePath,
+        includeInGame,
+        coderNotes
+      });
+      setHandoff(next);
+      setStatus(`Attached asset to ${needId}.`);
+    } catch (caught) {
+      setStatus(caught instanceof Error ? caught.message : String(caught));
+    } finally {
+      setIsBusy(false);
+    }
+  }
+
+  const selectedAssignments = handoff?.assignments.filter(
+    (assignment) => assignment.needId === selectedNeedId
+  ) ?? [];
+
+  return (
+    <div className="asset-handoff-tool">
+      <div className="section-heading">
+        <h3>Asset Handoff</h3>
+        <span>{handoff ? `${handoff.needs.length} needs / ${handoff.assignments.length} assets` : "not initialized"}</span>
+      </div>
+
+      <p className="tool-note">
+        Create generic asset needs for the game coding agent, attach source assets in Asset Forge,
+        and write structured handoff files back into the linked game project.
+      </p>
+
+      <div className="button-row">
+        <button type="button" className="primary" disabled={isBusy} onClick={() => void initialize()}>
+          Initialize Handoff Files
+        </button>
+        <button type="button" disabled={isBusy} onClick={() => void refresh()}>
+          Refresh
+        </button>
+        <button type="button" disabled={isBusy} onClick={newNeed}>
+          New Need
+        </button>
+      </div>
+
+      {handoff ? (
+        <div className="handoff-paths">
+          <div><strong>Needs</strong><span>{handoff.needsManifestPath}</span></div>
+          <div><strong>Assignments</strong><span>{handoff.assignmentsManifestPath}</span></div>
+          <div><strong>Coder handoff</strong><span>{handoff.coderHandoffPath}</span></div>
+          <div><strong>Audit</strong><span>{handoff.auditLogPath}</span></div>
+        </div>
+      ) : null}
+
+      <div className="handoff-layout">
+        <div className="model-list handoff-list">
+          {handoff?.needs.map((need) => (
+            <button
+              key={need.id}
+              type="button"
+              className={need.id === selectedNeedId ? "model-row active" : "model-row"}
+              onClick={() => selectNeed(need)}
+            >
+              <strong>{need.label || need.id}</strong>
+              <span>{need.category || "uncategorized"} · {need.priority} · {need.status}</span>
+            </button>
+          ))}
+          {handoff && handoff.needs.length === 0 ? (
+            <p className="empty-state">No asset needs yet. Add the first need on the right.</p>
+          ) : null}
+        </div>
+
+        <section className="handoff-editor">
+          <div className="section-heading">
+            <h3>{selectedNeedId ? "Edit Need" : "New Need"}</h3>
+            <span>generic, project reusable</span>
+          </div>
+
+          <div className="handoff-form-grid">
+            <label>
+              Need id
+              <input
+                value={needDraft.id}
+                placeholder="token-commerce-art"
+                onChange={(event) => updateNeed("id", normalizeNeedId(event.target.value))}
+              />
+            </label>
+            <label>
+              Label
+              <input
+                value={needDraft.label}
+                placeholder="Commerce token art"
+                onChange={(event) => updateNeed("label", event.target.value)}
+              />
+            </label>
+            <label>
+              Category
+              <input
+                value={needDraft.category}
+                placeholder="token, card, model, audio, ui"
+                onChange={(event) => updateNeed("category", event.target.value)}
+              />
+            </label>
+            <label>
+              Priority
+              <select
+                value={needDraft.priority}
+                onChange={(event) => updateNeed("priority", event.target.value)}
+              >
+                <option value="high">High</option>
+                <option value="medium">Medium</option>
+                <option value="low">Low</option>
+                <option value="nice-to-have">Nice to have</option>
+              </select>
+            </label>
+            <label>
+              Status
+              <select
+                value={needDraft.status}
+                onChange={(event) => updateNeed("status", event.target.value)}
+              >
+                <option value="needed">Needed</option>
+                <option value="in-progress">In progress</option>
+                <option value="attached">Attached</option>
+                <option value="implemented">Implemented</option>
+                <option value="blocked">Blocked</option>
+              </select>
+            </label>
+            <label>
+              Requested formats
+              <input
+                value={needDraft.requestedFormats.join(", ")}
+                placeholder="png, webp, glb, wav"
+                onChange={(event) =>
+                  updateNeed(
+                    "requestedFormats",
+                    event.target.value.split(",").map((value) => value.trim())
+                  )
+                }
+              />
+            </label>
+          </div>
+
+          <PathField
+            label="Target runtime path"
+            value={needDraft.targetRuntimePath}
+            kind="file"
+            placeholder="game/assets/cards/example.png"
+            onChange={(value) => {
+              updateNeed("targetRuntimePath", value);
+              setTargetRuntimePath(value);
+            }}
+          />
+
+          <label>
+            Description
+            <textarea
+              value={needDraft.description}
+              placeholder="What the asset must communicate and where it will be used."
+              onChange={(event) => updateNeed("description", event.target.value)}
+            />
+          </label>
+
+          <label>
+            Notes
+            <textarea
+              value={needDraft.notes}
+              placeholder="Technical constraints, visual direction, scale, naming, or source references."
+              onChange={(event) => updateNeed("notes", event.target.value)}
+            />
+          </label>
+
+          <div className="button-row">
+            <button type="button" className="primary" disabled={isBusy} onClick={() => void saveNeed()}>
+              Save Need
+            </button>
+          </div>
+
+          <hr />
+
+          <div className="section-heading">
+            <h3>Attach Asset</h3>
+            <span>{selectedNeedId || "save/select a need first"}</span>
+          </div>
+
+          <PathField
+            label="Source asset"
+            value={sourcePath}
+            kind="file"
+            placeholder="G:\\asset-source\\image.png"
+            onChange={setSourcePath}
+          />
+          <div className="handoff-form-grid">
+            <label>
+              Asset role
+              <input
+                value={assetRole}
+                placeholder="front art, icon, model, texture"
+                onChange={(event) => setAssetRole(event.target.value)}
+              />
+            </label>
+            <PathField
+              label="Copy/include target"
+              value={targetRuntimePath}
+              kind="file"
+              placeholder="game/assets/cards/example.png"
+              onChange={setTargetRuntimePath}
+            />
+          </div>
+          <label className="checkbox-row">
+            <input
+              type="checkbox"
+              checked={includeInGame}
+              onChange={(event) => setIncludeInGame(event.target.checked)}
+            />
+            Copy into the linked game project now
+          </label>
+          <label>
+            Coder handoff notes
+            <textarea
+              value={coderNotes}
+              placeholder="How the game coding agent should consume this asset."
+              onChange={(event) => setCoderNotes(event.target.value)}
+            />
+          </label>
+          <div className="button-row">
+            <button type="button" disabled={isBusy} onClick={() => void attachAsset()}>
+              Attach Asset
+            </button>
+          </div>
+
+          {selectedAssignments.length > 0 ? (
+            <div className="assignment-list">
+              <h3>Attached Assets</h3>
+              {selectedAssignments.map((assignment) => (
+                <div key={assignment.id} className="assignment-row">
+                  <strong>{assignment.fileName}</strong>
+                  <span>{assignment.status}</span>
+                  <small>{assignment.stagedPath || assignment.sourcePath}</small>
+                </div>
+              ))}
+            </div>
+          ) : null}
+        </section>
+      </div>
+
+      {status ? <p className="tool-status">{status}</p> : null}
+    </div>
   );
 }
 

@@ -1,0 +1,9 @@
+version: 1
+updated: 2026-05-18
+patterns:
+  - id: workbench-tool
+    summary: Tool selector/header at top, item list left, compact preview/editor right.
+  - id: project-details-modal
+    summary: Project metadata and external links live behind edit/settings actions rather than consuming primary tool space.
+  - id: batch-job
+    summary: Long-running tools show progress, lock or dim active controls, and write notification/audit logs.

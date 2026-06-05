@@ -1,6 +1,11 @@
 version: 1
 updated: 2026-05-16
 todos:
+  - id: generic-asset-handoff-tool
+    status: partial
+    area: tooling
+    summary: Added generic Asset Handoff tool to initialize project-local refs/assetForge files, capture asset needs, attach source assets, optionally copy assets into the linked game project, and generate JSON/Markdown handoff outputs for game coding agents.
+    details: Remaining work includes filtering/review for large need lists, per-project default runtime folders, and automated validation tests for manifests.
   - id: model-optimizer-existing-staging-awareness
     status: open
     area: model-optimization

@@ -1,0 +1,14 @@
+version: 1
+updated: 2026-05-18
+integration:
+  id: imagemagick
+  status: planned
+  mode: local-executable
+  machine_config_fields:
+    - executablePath
+    - enabled
+  expected_uses:
+    - image inspection
+    - resizing
+    - format conversion
+    - staging optimization

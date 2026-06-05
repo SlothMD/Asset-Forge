@@ -1,0 +1,14 @@
+version: 1
+updated: 2026-05-18
+schema:
+  status: draft
+  format: jsonl
+  fields:
+    - timestamp
+    - tool
+    - action
+    - target
+    - summary
+    - projectId
+    - machineName
+    - warnings

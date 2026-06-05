@@ -7,8 +7,8 @@ entries:
     changed_files:
       - refs/project.yaml
       - refs/architecture/boundaries.yaml
-      - refs/planning/modules.yaml
-      - refs/planning/integrationMap.yaml
+      - refs/architecture/modules.yaml
+      - refs/architecture/integrationMap.yaml
       - refs/implementation/fileMap.yaml
       - refs/handoffs/currentHandoff.md
       - refs/testing/acceptanceCriteria.yaml
@@ -27,3 +27,26 @@ entries:
     validation:
       status: blocked
       reason: MSVC linker missing msvcrt.lib
+
+  - date: 2026-06-04
+    agent: codex
+    area: asset-handoff
+    summary: Added a generic reusable Asset Handoff tool for linked game projects.
+    changed_files:
+      - apps/desktop/src/main.tsx
+      - apps/desktop/src/styles.css
+      - apps/desktop/src-tauri/src/lib.rs
+      - docs/generic-asset-handoff.md
+      - docs/handoff-manifests.md
+      - refs/data/assetManifest.schema.yaml
+      - refs/implementation/fileMap.yaml
+      - refs/planning/roadmap.yaml
+      - refs/planning/todos.yaml
+    validation:
+      status: partial
+      passed:
+        - npm run typecheck
+        - npm run build
+        - cargo-fmt --check after formatting
+      blocked:
+        - cargo check is still blocked by missing MSVC/Windows SDK msvcrt.lib before checking the app crate.

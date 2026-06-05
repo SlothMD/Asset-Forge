@@ -1,0 +1,11 @@
+version: 1
+updated: 2026-05-18
+personas:
+  - id: solo-board-game-designer
+    summary: Designs from spreadsheets and needs printable cards, counters, sheets, and fast iteration.
+  - id: indie-strategy-developer
+    summary: Needs icons, tokens, model staging, runtime manifests, and repeatable asset promotion.
+  - id: wargame-designer
+    summary: Needs dense readable counters, faction sheets, scenario assets, and digital tabletop exports.
+  - id: coding-agent
+    summary: Consumes manifests, audit logs, and refs to implement generated assets into downstream projects.

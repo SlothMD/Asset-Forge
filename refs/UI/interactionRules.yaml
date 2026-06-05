@@ -1,0 +1,9 @@
+version: 1
+updated: 2026-05-18
+rules:
+  - id: path-browse-default
+    summary: Browse actions open at the current path if set, otherwise the last selected folder.
+  - id: no-silent-long-job
+    summary: Long-running operations need progress, disabled controls, or a background notification log.
+  - id: selected-asset-specific-fields
+    summary: Role, notes, orientation, and review state should apply to the selected asset unless explicitly marked global.

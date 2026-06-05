@@ -1,6 +1,10 @@
 version: 1
 updated: 2026-05-16
 roadmap:
+  - id: generic-asset-handoff
+    horizon: now
+    status: in-progress
+    summary: Provide reusable handoff tooling so game coding agents can inventory needed assets, Asset Forge can attach/process those assets, and the linked game project receives structured implementation instructions.
   - id: durable-handoff-foundation
     horizon: now
     status: in-progress

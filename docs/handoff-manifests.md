@@ -16,6 +16,25 @@ Canonical handoff manifests should live under `refs/assetForge`. Append-only too
 refs/assetForge/logs/asset-forge-audit.jsonl
 ```
 
+## Generic Asset Handoff
+
+The generic asset handoff workflow is the preferred bridge between a game coding agent and Asset Forge for art, model, audio, card, token, board, UI, and other runtime asset needs.
+
+Canonical files:
+
+```text
+refs/assetForge/agent-asset-inventory-instructions.md
+refs/assetForge/asset-needs.manifest.json
+refs/assetForge/asset-assignments.manifest.json
+refs/assetForge/asset-handoff-to-game-agent.md
+```
+
+`asset-needs.manifest.json` is the game-agent-to-Asset-Forge manifest. It records what assets are needed and the technical or gameplay constraints for each.
+
+`asset-assignments.manifest.json` is the Asset-Forge-to-game-agent manifest. It records which source assets were attached, whether they were copied into the game project, and how the game coding agent should consume them.
+
+`asset-handoff-to-game-agent.md` is generated as a readable summary. JSON remains canonical.
+
 ## Source Image Orientation
 
 The first source-image orientation manifest is used for 2D token orientation and Trellis/Comfy 3D conversion. Default project-local path:

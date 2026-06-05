@@ -1,0 +1,15 @@
+version: 1
+updated: 2026-05-18
+machine_profiles:
+  - id: default-local
+    status: draft
+    description: Generic local developer machine profile.
+    tools:
+      - id: git
+        source: system
+      - id: node
+        source: system
+      - id: cargo
+        source: system
+      - id: gltf-transform
+        source: npx

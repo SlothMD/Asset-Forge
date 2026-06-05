@@ -1,0 +1,17 @@
+version: 1
+updated: 2026-05-18
+workflows:
+  - id: small-craft-3d-pipeline
+    steps:
+      - Select source image folder.
+      - Mark per-image orientation and role notes.
+      - Run Trellis batch conversion.
+      - Mark GLB model orientation.
+      - Optimize model outputs to staging.
+      - Review original and optimized models.
+      - Promote runtime-compatible files into the downstream game project.
+  - id: project-linking
+    steps:
+      - Add portable repository URL to project metadata.
+      - Add this-machine local folder binding.
+      - Use Git status, pull, and push actions through the linked local folder.

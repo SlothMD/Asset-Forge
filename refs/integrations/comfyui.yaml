@@ -1,0 +1,12 @@
+version: 1
+updated: 2026-05-18
+integration:
+  id: comfyui
+  status: planned
+  mode: local-service
+  machine_config_fields:
+    - baseUrl
+    - workflowFolder
+    - enabled
+  notes:
+    - Store local service URLs in machine config, not portable project metadata.

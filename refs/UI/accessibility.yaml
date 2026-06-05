@@ -1,0 +1,9 @@
+version: 1
+updated: 2026-05-18
+accessibility:
+  principles:
+    - Do not rely on color alone for important state.
+    - Keep controls keyboard reachable.
+    - Provide visible labels for editable fields.
+    - Keep preview controls discoverable and usable without precision pointer movement.
+  status: draft

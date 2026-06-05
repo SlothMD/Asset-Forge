@@ -338,7 +338,8 @@ dd {
 
 .image-tool,
 .model-optimization-tool,
-.trellis-tool {
+.trellis-tool,
+.asset-handoff-tool {
   display: grid;
   gap: 12px;
 }
@@ -362,6 +363,88 @@ dd {
   gap: 14px;
   grid-template-columns: minmax(280px, 0.46fr) minmax(520px, 1fr);
   min-height: 360px;
+}
+
+.handoff-layout {
+  display: grid;
+  gap: 14px;
+  grid-template-columns: minmax(280px, 0.38fr) minmax(560px, 1fr);
+}
+
+.handoff-list {
+  max-height: 680px;
+}
+
+.handoff-editor {
+  align-content: start;
+  background: #fbfaf6;
+  border: 1px solid #e2ded3;
+  border-radius: 8px;
+  display: grid;
+  gap: 12px;
+  padding: 14px;
+}
+
+.handoff-form-grid {
+  display: grid;
+  gap: 10px;
+  grid-template-columns: repeat(3, minmax(160px, 1fr));
+}
+
+.handoff-form-grid label,
+.handoff-editor label {
+  color: #40514d;
+  display: grid;
+  font-size: 0.78rem;
+  font-weight: 750;
+  gap: 6px;
+}
+
+.handoff-paths {
+  background: #fbfaf6;
+  border: 1px solid #e2ded3;
+  border-radius: 8px;
+  display: grid;
+  gap: 6px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  padding: 10px;
+}
+
+.handoff-paths div,
+.assignment-row {
+  display: grid;
+  gap: 2px;
+}
+
+.handoff-paths span,
+.assignment-row small {
+  color: #61716d;
+  font-size: 0.72rem;
+  overflow-wrap: anywhere;
+}
+
+.checkbox-row {
+  align-items: center;
+  display: flex !important;
+  gap: 8px !important;
+}
+
+.checkbox-row input {
+  width: auto;
+}
+
+.assignment-list {
+  border-top: 1px solid #e2ded3;
+  display: grid;
+  gap: 8px;
+  padding-top: 12px;
+}
+
+.assignment-row {
+  background: #f4f1e8;
+  border: 1px solid #e2ded3;
+  border-radius: 8px;
+  padding: 8px 10px;
 }
 
 .source-orientation-layout {
@@ -785,8 +868,11 @@ dd {
   }
 
   .orientation-layout,
+  .handoff-layout,
   .source-orientation-layout,
   .orientation-controls,
+  .handoff-form-grid,
+  .handoff-paths,
   .image-config-grid,
   .scan-summary,
   .project-editor-grid {

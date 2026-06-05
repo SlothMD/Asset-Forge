@@ -1,0 +1,15 @@
+version: 1
+updated: 2026-05-18
+assumptions:
+  - id: local-first-default
+    status: accepted
+    summary: Asset Forge remains local-first; hosted services are optional and cannot be required for core project work.
+  - id: project-files-are-canonical
+    status: accepted
+    summary: Inspectable project folders and manifests are the canonical source of truth, not an app-private database.
+  - id: refs-are-agent-readable
+    status: accepted
+    summary: refs files should be readable by both humans and coding agents and should avoid chat-only knowledge.
+  - id: tool-config-is-machine-local
+    status: accepted
+    summary: Executable paths, local service URLs, and credentials are machine-local and must not become portable project requirements.

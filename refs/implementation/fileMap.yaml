@@ -11,7 +11,7 @@ areas:
   planning:
     guidance:
       - refs/project.yaml
-      - refs/planning/modules.yaml
+      - refs/architecture/modules.yaml
       - refs/planning/roadmap.yaml
       - refs/planning/todos.yaml
       - refs/planning/decisions.yaml
@@ -42,7 +42,7 @@ areas:
   model_optimization:
     guidance:
       - refs/planning/todos.yaml
-      - refs/planning/integrationMap.yaml
+      - refs/architecture/integrationMap.yaml
       - docs/model-optimization-tool.md
     likely_source_roots:
       - apps/desktop/src
@@ -52,14 +52,24 @@ areas:
   trellis_batch_conversion:
     guidance:
       - docs/trellis-batch-conversion.md
-      - refs/planning/integrationMap.yaml
+      - refs/architecture/integrationMap.yaml
     source_roots:
       - tools
 
   handoff_manifests:
     guidance:
       - docs/handoff-manifests.md
+      - docs/generic-asset-handoff.md
       - refs/architecture/boundaries.yaml
     project_local_roots:
       - refs/assetForge
       - refs/assetForge/logs
+
+  asset_handoff:
+    guidance:
+      - docs/generic-asset-handoff.md
+      - refs/data/assetManifest.schema.yaml
+    source_roots:
+      - apps/desktop/src/main.tsx
+      - apps/desktop/src-tauri/src/lib.rs
+    notes: Generic bridge for game-agent asset inventories, Asset Forge attachments, and game-agent implementation handoffs.

@@ -1,0 +1,17 @@
+version: 1
+updated: 2026-05-18
+schema:
+  status: draft
+  required_fields:
+    - schemaVersion
+    - tool
+    - sourceFolder
+    - stagingFolder
+    - outputs
+  output_fields:
+    - sourcePath
+    - outputPath
+    - action
+    - command
+    - status
+    - warnings

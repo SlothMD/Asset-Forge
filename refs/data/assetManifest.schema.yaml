@@ -1,0 +1,58 @@
+version: 1
+updated: 2026-05-18
+schema:
+  status: draft
+  required_fields:
+    - schemaVersion
+    - assets
+  asset_fields:
+    - id
+    - sourcePath
+    - outputPath
+    - assetType
+    - role
+    - notes
+    - transforms
+    - reviewStatus
+  asset_needs_manifest:
+    path: refs/assetForge/asset-needs.manifest.json
+    description: Game-agent-to-Asset-Forge manifest describing assets needed by a linked project.
+    required_fields:
+      - schemaVersion
+      - updatedAt
+      - tool
+      - projectName
+      - needs
+      - audit
+    need_fields:
+      - id
+      - label
+      - category
+      - description
+      - priority
+      - requestedFormats
+      - targetRuntimePath
+      - status
+      - notes
+      - updatedAt
+  asset_assignments_manifest:
+    path: refs/assetForge/asset-assignments.manifest.json
+    description: Asset-Forge-to-game-agent manifest describing attached or copied assets.
+    required_fields:
+      - schemaVersion
+      - updatedAt
+      - tool
+      - assignments
+      - audit
+    assignment_fields:
+      - id
+      - needId
+      - sourcePath
+      - fileName
+      - assetRole
+      - targetRuntimePath
+      - stagedPath
+      - includeInGame
+      - coderNotes
+      - status
+      - updatedAt

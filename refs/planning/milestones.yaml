@@ -1,0 +1,27 @@
+version: 1
+updated: 2026-05-18
+milestones:
+  - id: poc-local-workbench
+    status: in-progress
+    target: near-term
+    summary: Local desktop workbench can create/open projects, edit project metadata, and run early asset tools.
+    exit_criteria:
+      - Launcher and project detail flows are stable.
+      - Machine-local tool configuration is usable.
+      - Asset orientation, optimization, and handoff manifests can be produced.
+  - id: asset-pipeline-dogfood
+    status: in-progress
+    target: near-term
+    summary: Black Ledger Orbit and Sector 404 can use Asset Forge outputs without ad hoc manual handoff.
+    exit_criteria:
+      - Source-image orientation manifests are developer-readable.
+      - Model orientation manifests are developer-readable.
+      - Image/model optimization can stage outputs and report prior completed work.
+  - id: first-release-candidate
+    status: planned
+    target: later
+    summary: Package a local-first desktop app with documented workflows and predictable project storage.
+    exit_criteria:
+      - Core workflows have smoke tests.
+      - Release checklist is complete.
+      - No secrets or machine-local paths are stored in portable project files.
